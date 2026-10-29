@@ -342,6 +342,9 @@
   <div class="actions">
     <button type="button" id="addRow">Add printer</button>
     <button type="button" id="resetRows">Reset to defaults</button>
+    <button type="button" id="exportSettings" title="Save all settings (printers and view) to a file">Export…</button>
+    <button type="button" id="importSettings" title="Load settings from an exported file">Import…</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
     <span class="spacer"></span>
     <button type="button" id="cancelSettings">Cancel</button>
     <button type="button" id="saveSettings">Save</button>
@@ -1071,6 +1074,33 @@ $("addRow").addEventListener("click", () => {
   $("rows").insertAdjacentHTML("beforeend", rowHtml({ name: "", host: "", stream: "/webcam/?action=stream", screen: "", rotate: 0, flip: false, show: true }));
 });
 $("resetRows").addEventListener("click", () => fillRows(DEFAULT_PRINTERS));
+// Settings are per origin, so export/import is how they move between browsers or hosts
+$("exportSettings").addEventListener("click", () => {
+  const data = {};
+  try {
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith(STORE_PREFIX)) data[k.slice(STORE_PREFIX.length)] = JSON.parse(localStorage.getItem(k));
+    }
+  } catch {}
+  data.printers = readRows();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ printerMonitor: 1, settings: data }, null, 2)], { type: "application/json" }));
+  a.download = "printer-monitor-settings.json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$("importSettings").addEventListener("click", () => $("importFile").click());
+$("importFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  let parsed;
+  try { parsed = JSON.parse(await file.text()); } catch { alert("That file isn't valid JSON."); return; }
+  const settings = parsed && parsed.printerMonitor && parsed.settings;
+  if (!settings || !Array.isArray(settings.printers)) { alert("That file isn't a Printer Monitor settings export."); return; }
+  for (const [k, v] of Object.entries(settings)) store.set(k, v);
+  location.reload();
+});
 $("cancelSettings").addEventListener("click", () => $("settings").close());
 $("saveSettings").addEventListener("click", () => {
   printers = readRows();
