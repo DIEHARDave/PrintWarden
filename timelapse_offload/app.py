@@ -183,8 +183,13 @@ class Watcher:
         try:
             self.log.info("downloading %d frames", len(frames))
             started = asyncio.get_running_loop().time()
-            await self.mr.download_frames(frames, work / "frames", self.cfg.download_concurrency)
-            self.log.info("downloaded in %.0fs", asyncio.get_running_loop().time() - started)
+            got = await self.mr.download_frames(frames, work / "frames",
+                                               self.cfg.download_concurrency)
+            self.log.info("downloaded %d frames in %.0fs", got,
+                          asyncio.get_running_loop().time() - started)
+            if not got:
+                self.log.warning("no frames could be downloaded")
+                return None
 
             stamp = datetime.now().strftime("%Y%m%d_%H%M")
             name = f"timelapse_{safe_name(self.filename)}_{stamp}"

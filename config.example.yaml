@@ -1,7 +1,7 @@
 # Copy to config/config.yaml and edit.
 
 # Paths inside the container (see docker-compose.yml).
-output_dir: /output          # NAS share; videos land in <output_dir>/<printer name>/
+output_dir: /output/3D-Prints  # on the mounted NAS share; videos land in <output_dir>/<printer name>/
 work_dir: /work              # scratch space for frames while rendering
 state_file: /data/state.json # remembers which frame sets were rendered
 

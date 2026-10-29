@@ -68,8 +68,13 @@ class Moonraker:
         frames = [f for f in files if f["path"].startswith("frame") and f["path"].endswith(".jpg")]
         return sorted(frames, key=lambda f: f["path"])
 
-    async def download_frames(self, frames: list[dict], dest: Path, concurrency: int) -> None:
-        """Download frames to dest, renumbered frame000001.jpg.. with no gaps."""
+    async def download_frames(self, frames: list[dict], dest: Path, concurrency: int) -> int:
+        """Download frames to dest, then renumber frame000001.jpg.. with no gaps.
+
+        A frame the printer lists but can't serve (404) or that keeps failing is
+        skipped, not fatal: one missing frame shouldn't lose the whole timelapse.
+        Returns the number of frames actually downloaded.
+        """
         dest.mkdir(parents=True, exist_ok=True)
         sem = asyncio.Semaphore(concurrency)
 
@@ -81,15 +86,32 @@ class Moonraker:
                     try:
                         async with self.session.get(url, headers=self.headers,
                                                     timeout=HTTP_TIMEOUT) as resp:
+                            if resp.status == 404:
+                                self.log.warning("frame %s missing on printer, skipping",
+                                                 frame["path"])
+                                return
                             resp.raise_for_status()
                             target.write_bytes(await resp.read())
                         return
                     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                         if attempt == DOWNLOAD_RETRIES:
-                            raise MoonrakerError(f"download {frame['path']}: {e}") from e
+                            self.log.warning("frame %s failed after retries, skipping: %s",
+                                             frame["path"], e)
+                            return
                         await asyncio.sleep(2 * attempt)
 
         await asyncio.gather(*(fetch(i, f) for i, f in enumerate(frames, 1)))
+
+        # Close any gaps left by skipped frames so ffmpeg's frame%06d sees a run.
+        got = sorted(dest.glob("frame*.jpg"))
+        if len(got) < len(frames):
+            self.log.warning("%d of %d frames unavailable; rendering the rest",
+                             len(frames) - len(got), len(frames))
+            for n, path in enumerate(got, 1):
+                want = dest / f"frame{n:06d}.jpg"
+                if path != want:
+                    path.rename(want)
+        return len(got)
 
     # --- websocket ---
 
