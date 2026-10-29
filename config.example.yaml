@@ -12,6 +12,14 @@ disable_printer_render: true
 render_cancelled: false
 # When a printer (re)connects idle with frames we haven't rendered, render them.
 catch_up: true
+# After a frame-mode render succeeds and the video is on the NAS, delete the
+# frames from the printer. NOTE: moonraker-timelapse usually registers its
+# frames folder READ-ONLY, so the API rejects deletes (405) and this does
+# nothing — the plugin already clears the frames itself when the next print
+# starts, and with rendering offloaded no videos are stored on the printer
+# either. Leave false unless your printer exposes the frames root writable.
+# (Sync-mode printers like the U1 use delete_after_sync instead, per printer.)
+delete_frames_after_render: false
 
 download_concurrency: 4      # parallel frame downloads per printer
 max_parallel_renders: 1      # ffmpeg jobs at once across all printers

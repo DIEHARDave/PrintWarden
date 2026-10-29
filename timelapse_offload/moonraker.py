@@ -89,6 +89,40 @@ class Moonraker:
                 msg = (body or {}).get("error", {}).get("message", resp.reason)
                 raise MoonrakerError(f"delete {root}/{path}: {resp.status} {msg}")
 
+    async def delete_frames(self, frames: list[dict], concurrency: int) -> int:
+        """Delete the given frame files from the printer. Returns how many went.
+
+        Many printers register the timelapse_frames root read-only, so the API
+        rejects deletes with 405. We detect that on the first hit and stop
+        instead of hammering the printer with a reject per frame. (The plugin
+        clears the frames itself when the next print starts.)
+        """
+        sem = asyncio.Semaphore(concurrency)
+        deleted = 0
+        blocked = False
+
+        async def rm(frame: dict) -> None:
+            nonlocal deleted, blocked
+            if blocked:
+                return
+            async with sem:
+                if blocked:
+                    return
+                try:
+                    await self.delete_file(FRAMES_ROOT, frame["path"])
+                    deleted += 1
+                except MoonrakerError as e:
+                    if "405" in str(e):
+                        blocked = True
+                    else:
+                        self.log.warning("could not delete %s: %s", frame["path"], e)
+
+        await asyncio.gather(*(rm(f) for f in frames))
+        if blocked:
+            self.log.warning("frames root is read-only on this printer; cannot delete "
+                             "via API (the plugin clears them at the next print start)")
+        return deleted
+
     async def list_frames(self) -> list[dict]:
         files = await self.get("/server/files/list", root=FRAMES_ROOT)
         frames = [f for f in files if f["path"].startswith("frame") and f["path"].endswith(".jpg")]

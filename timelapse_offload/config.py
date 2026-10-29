@@ -51,6 +51,9 @@ class Config:
     render_cancelled: bool = False
     # On (re)connect, render frames left on an idle printer that we haven't rendered yet.
     catch_up: bool = True
+    # After a successful render+save, delete the frames from the printer so they
+    # don't sit on its storage until the next print. Only the video on the NAS remains.
+    delete_frames_after_render: bool = False
     download_concurrency: int = 4
     max_parallel_renders: int = 1
     # How often a sync-mode printer is polled for new finished videos.

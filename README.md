@@ -10,6 +10,7 @@ Printers running [moonraker-timelapse](https://github.com/mainsail-crew/moonrake
 2. When a print goes from printing to complete, downloads the frames from Moonraker's `timelapse_frames` file root (read-only HTTP; no SSH or printer-side install).
 3. Renders with ffmpeg using the printer's own timelapse settings from Mainsail/Fluidd: frame rate or variable fps/target length, rotation and flip, duplicate last frame, preview image.
 4. Saves `timelapse_<file>_<date>.mp4` and a preview `.jpg` to `<output>/<printer>/`.
+5. With `delete_frames_after_render`, removes the frames from the printer once the video is safely on the NAS, so nothing lingers on printer storage.
 
 On connect it turns off moonraker-timelapse's `autorender` on the printer (`disable_printer_render`). Turn it back on in Mainsail/Fluidd (Settings → Timelapse) if you remove TimelapseOffload.
 

@@ -249,6 +249,10 @@ class Watcher:
                 publish(preview, dest_dir)
             self.state.mark(self.printer.name, key)
             self.log.info("saved %s", dest)
+            # Frames are safely rendered to the NAS now; clear them off the printer.
+            if self.cfg.delete_frames_after_render:
+                removed = await self.mr.delete_frames(frames, self.cfg.download_concurrency)
+                self.log.info("removed %d/%d frames from printer", removed, len(frames))
             return dest
         finally:
             shutil.rmtree(work, ignore_errors=True)
