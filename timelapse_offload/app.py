@@ -69,6 +69,12 @@ class Watcher:
         self.tasks: set[asyncio.Task] = set()
 
     async def run(self) -> None:
+        if self.printer.mode == "sync":
+            await self._run_sync()
+        else:
+            await self._run_frames()
+
+    async def _run_frames(self) -> None:
         delay = RECONNECT_MIN
         while True:
             try:
@@ -79,6 +85,46 @@ class Watcher:
                 await self.mr.close()
             await asyncio.sleep(delay)
             delay = min(delay * 2, RECONNECT_MAX)
+
+    async def _run_sync(self) -> None:
+        """Poll a file root and copy new finished videos to the NAS."""
+        self.log.info("sync mode: polling '%s' every %ds", self.printer.sync_root,
+                      self.cfg.sync_interval)
+        delay = RECONNECT_MIN
+        while True:
+            try:
+                await self._sync_once()
+                delay = RECONNECT_MIN
+            except (aiohttp.ClientError, asyncio.TimeoutError, MoonrakerError, OSError) as e:
+                self.log.warning("sync failed: %s (retry in %ds)", e, delay)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, RECONNECT_MAX)
+                continue
+            await asyncio.sleep(self.cfg.sync_interval)
+
+    async def _sync_once(self) -> int:
+        files = await self.mr.list_root(self.printer.sync_root)
+        wanted = [f for f in files
+                  if any(f["path"].endswith(s) for s in self.printer.sync_suffixes)]
+        dest_dir = self.cfg.output_dir / self.printer.name
+        copied = 0
+        for f in sorted(wanted, key=lambda x: x["path"]):
+            dest = dest_dir / Path(f["path"]).name
+            # Already on the NAS (same size)? Skip — makes re-polls cheap.
+            try:
+                if dest.exists() and dest.stat().st_size == f.get("size"):
+                    continue
+            except OSError:
+                pass
+            self.log.info("syncing %s (%.1f MB)", f["path"], f.get("size", 0) / 1e6)
+            await self.mr.download_file(self.printer.sync_root, f["path"], dest)
+            copied += 1
+            if self.printer.delete_after_sync:
+                await self.mr.delete_file(self.printer.sync_root, f["path"])
+                self.log.info("deleted %s from printer", f["path"])
+        if copied:
+            self.log.info("synced %d new file(s) to %s", copied, dest_dir)
+        return copied
 
     async def _session(self) -> int | None:
         """One websocket session. Returns a retry delay to use instead of the backoff."""

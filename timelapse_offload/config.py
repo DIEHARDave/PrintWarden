@@ -12,6 +12,15 @@ class Printer:
     host: str
     port: int = 7125
     api_key: str = ""
+    # "frames": offload moonraker-timelapse frame rendering (the default).
+    # "sync":   copy already-rendered videos from a file root to the NAS, for
+    #           printers that render on-device and only expose finished files
+    #           (e.g. the Snapmaker U1's "timelapse" root).
+    mode: str = "frames"
+    # --- sync mode only ---
+    sync_root: str = "timelapse"
+    sync_suffixes: list[str] = field(default_factory=lambda: [".mp4", "_cover.jpg"])
+    delete_after_sync: bool = False
 
     @property
     def base_url(self) -> str:
@@ -44,6 +53,8 @@ class Config:
     catch_up: bool = True
     download_concurrency: int = 4
     max_parallel_renders: int = 1
+    # How often a sync-mode printer is polled for new finished videos.
+    sync_interval: int = 300
     ffmpeg: FfmpegOptions = field(default_factory=FfmpegOptions)
 
 

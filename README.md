@@ -32,6 +32,10 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
+## Sync mode (printers that render on-device)
+
+Some printers render timelapses themselves and never expose the raw frames — the Snapmaker U1, for example, renders on the printer and only publishes finished MP4s. There's nothing to offload, so a printer set to `mode: sync` is instead polled on an interval, and any new videos in its file root are copied to `<output>/<printer>/`. Set `delete_after_sync: true` to also remove them from the printer after a successful copy (off by default). See the U1 block in [config.example.yaml](config.example.yaml).
+
 ## Render on demand
 
 Render whatever frames are on a printer right now, even if they were rendered before:
@@ -46,4 +50,4 @@ See [config.example.yaml](config.example.yaml). Output quality is set there (`ff
 
 ## Not supported
 
-Printers without moonraker-timelapse: Bambu, stock Creality/Anycubic, Snapmaker U1 stock firmware.
+Printers without moonraker-timelapse and without a Moonraker file root of finished videos: Bambu, stock Creality/Anycubic. (The Snapmaker U1 renders on-device but exposes its videos over Moonraker, so it works in `sync` mode.)

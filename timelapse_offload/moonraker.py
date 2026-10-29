@@ -14,6 +14,8 @@ from .config import Printer
 
 FRAMES_ROOT = "timelapse_frames"
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=60)
+# Finished videos can be tens of MB; cap stalls, not total transfer time.
+FILE_TIMEOUT = aiohttp.ClientTimeout(sock_connect=15, sock_read=120)
 DOWNLOAD_RETRIES = 3
 
 
@@ -62,6 +64,30 @@ class Moonraker:
             raise
         # Snapmaker's stock firmware answers this path with just {"enabled": false}.
         return settings if "autorender" in settings else None
+
+    async def list_root(self, root: str) -> list[dict]:
+        """All files under a Moonraker file root (e.g. 'timelapse')."""
+        return await self.get("/server/files/list", root=root)
+
+    async def download_file(self, root: str, path: str, dest: Path) -> None:
+        """Stream one file from a Moonraker root to dest (via a .part temp)."""
+        url = f"{self.printer.base_url}/server/files/{root}/{path}"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(dest.name + ".part")
+        async with self.session.get(url, headers=self.headers, timeout=FILE_TIMEOUT) as resp:
+            resp.raise_for_status()
+            with tmp.open("wb") as f:
+                async for chunk in resp.content.iter_chunked(1 << 20):
+                    f.write(chunk)
+        tmp.replace(dest)
+
+    async def delete_file(self, root: str, path: str) -> None:
+        url = f"{self.printer.base_url}/server/files/{root}/{path}"
+        async with self.session.delete(url, headers=self.headers, timeout=HTTP_TIMEOUT) as resp:
+            if resp.status != 200:
+                body = await resp.json(content_type=None)
+                msg = (body or {}).get("error", {}).get("message", resp.reason)
+                raise MoonrakerError(f"delete {root}/{path}: {resp.status} {msg}")
 
     async def list_frames(self) -> list[dict]:
         files = await self.get("/server/files/list", root=FRAMES_ROOT)

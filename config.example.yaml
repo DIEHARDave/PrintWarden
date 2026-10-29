@@ -15,6 +15,7 @@ catch_up: true
 
 download_concurrency: 4      # parallel frame downloads per printer
 max_parallel_renders: 1      # ffmpeg jobs at once across all printers
+sync_interval: 300           # how often (s) a sync-mode printer is polled
 
 # Frame rate, rotation/flip, duplicate-last-frame, target length and preview image
 # come from each printer's own timelapse settings in Mainsail/Fluidd.
@@ -35,3 +36,14 @@ printers:
     host: 10.0.1.195
   # port: 7125 and api_key: "" are the defaults; set api_key if the
   # printer doesn't trust the Docker host's address.
+
+  # Snapmaker U1 and other printers that render timelapses on-device: they
+  # don't expose raw frames, so instead of offloading the render we just copy
+  # the finished videos to the NAS. mode "sync" polls a file root and pulls
+  # anything new.
+  - name: U1
+    host: 10.0.1.173
+    mode: sync
+    # sync_root: timelapse            # Moonraker file root holding the videos
+    # sync_suffixes: [".mp4", "_cover.jpg"]   # which files to copy
+    # delete_after_sync: false        # true also removes them from the printer
