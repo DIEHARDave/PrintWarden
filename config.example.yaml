@@ -1,0 +1,37 @@
+# Copy to config/config.yaml and edit.
+
+# Paths inside the container (see docker-compose.yml).
+output_dir: /output          # NAS share; videos land in <output_dir>/<printer name>/
+work_dir: /work              # scratch space for frames while rendering
+state_file: /data/state.json # remembers which frame sets were rendered
+
+# Turn moonraker-timelapse's on-printer render off on each printer at connect,
+# so the printer never spends time (or storage) making its own video.
+disable_printer_render: true
+# Also render cancelled or failed prints.
+render_cancelled: false
+# When a printer (re)connects idle with frames we haven't rendered, render them.
+catch_up: true
+
+download_concurrency: 4      # parallel frame downloads per printer
+max_parallel_renders: 1      # ffmpeg jobs at once across all printers
+
+# Frame rate, rotation/flip, duplicate-last-frame, target length and preview image
+# come from each printer's own timelapse settings in Mainsail/Fluidd.
+ffmpeg:
+  codec: libx264
+  crf: 23        # lower = better quality, bigger file
+  preset: medium # the PC has the CPU the printer lacks; slow/slower is fine too
+  extra: []      # e.g. ["-tune", "film"]
+
+printers:
+  - name: AD5X-1
+    host: 10.0.1.198
+  - name: AD5X-2
+    host: 10.0.1.179
+  - name: Creator5
+    host: 10.0.1.107
+  - name: T1
+    host: 10.0.1.195
+  # port: 7125 and api_key: "" are the defaults; set api_key if the
+  # printer doesn't trust the Docker host's address.

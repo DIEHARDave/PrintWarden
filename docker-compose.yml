@@ -1,0 +1,24 @@
+services:
+  timelapse-offload:
+    build: .
+    image: timelapse-offload:latest
+    container_name: timelapse-offload
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-America/New_York}
+    volumes:
+      - ./config:/config:ro
+      - work:/work
+      - data:/data
+      - nas:/output
+
+volumes:
+  work:
+  data:
+  # The NAS share, mounted by Docker over SMB. Settings come from .env.
+  nas:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: ${NAS_SHARE}
+      o: "username=${NAS_USER},password=${NAS_PASSWORD},uid=1000,gid=1000,file_mode=0664,dir_mode=0775,vers=3.0"

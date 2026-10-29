@@ -1,0 +1,131 @@
+"""Minimal Moonraker HTTP + websocket client."""
+
+import asyncio
+import itertools
+import json
+import logging
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import Any
+
+import aiohttp
+
+from .config import Printer
+
+FRAMES_ROOT = "timelapse_frames"
+HTTP_TIMEOUT = aiohttp.ClientTimeout(total=60)
+DOWNLOAD_RETRIES = 3
+
+
+class MoonrakerError(Exception):
+    pass
+
+
+class Moonraker:
+    def __init__(self, printer: Printer, session: aiohttp.ClientSession):
+        self.printer = printer
+        self.session = session
+        self.log = logging.getLogger(printer.name)
+        self._ids = itertools.count(1)
+        self._pending: dict[int, asyncio.Future] = {}
+        self._ws: aiohttp.ClientWebSocketResponse | None = None
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return {"X-Api-Key": self.printer.api_key} if self.printer.api_key else {}
+
+    # --- HTTP ---
+
+    async def get(self, path: str, **params) -> Any:
+        return await self._request("GET", path, params)
+
+    async def post(self, path: str, **params) -> Any:
+        return await self._request("POST", path, params)
+
+    async def _request(self, method: str, path: str, params: dict) -> Any:
+        url = self.printer.base_url + path
+        async with self.session.request(method, url, params=params, headers=self.headers,
+                                        timeout=HTTP_TIMEOUT) as resp:
+            body = await resp.json(content_type=None)
+            if resp.status != 200:
+                msg = (body or {}).get("error", {}).get("message", resp.reason)
+                raise MoonrakerError(f"{method} {path}: {resp.status} {msg}")
+            return body["result"]
+
+    async def timelapse_settings(self) -> dict | None:
+        """moonraker-timelapse settings, or None if the component isn't installed."""
+        try:
+            settings = await self.get("/machine/timelapse/settings")
+        except MoonrakerError as e:
+            if " 404 " in str(e):
+                return None
+            raise
+        # Snapmaker's stock firmware answers this path with just {"enabled": false}.
+        return settings if "autorender" in settings else None
+
+    async def list_frames(self) -> list[dict]:
+        files = await self.get("/server/files/list", root=FRAMES_ROOT)
+        frames = [f for f in files if f["path"].startswith("frame") and f["path"].endswith(".jpg")]
+        return sorted(frames, key=lambda f: f["path"])
+
+    async def download_frames(self, frames: list[dict], dest: Path, concurrency: int) -> None:
+        """Download frames to dest, renumbered frame000001.jpg.. with no gaps."""
+        dest.mkdir(parents=True, exist_ok=True)
+        sem = asyncio.Semaphore(concurrency)
+
+        async def fetch(index: int, frame: dict) -> None:
+            url = f"{self.printer.base_url}/server/files/{FRAMES_ROOT}/{frame['path']}"
+            target = dest / f"frame{index:06d}.jpg"
+            async with sem:
+                for attempt in range(1, DOWNLOAD_RETRIES + 1):
+                    try:
+                        async with self.session.get(url, headers=self.headers,
+                                                    timeout=HTTP_TIMEOUT) as resp:
+                            resp.raise_for_status()
+                            target.write_bytes(await resp.read())
+                        return
+                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                        if attempt == DOWNLOAD_RETRIES:
+                            raise MoonrakerError(f"download {frame['path']}: {e}") from e
+                        await asyncio.sleep(2 * attempt)
+
+        await asyncio.gather(*(fetch(i, f) for i, f in enumerate(frames, 1)))
+
+    # --- websocket ---
+
+    async def connect(self) -> None:
+        self._ws = await self.session.ws_connect(self.printer.ws_url, headers=self.headers,
+                                                 heartbeat=30)
+
+    async def close(self) -> None:
+        if self._ws is not None:
+            await self._ws.close()
+        for fut in self._pending.values():
+            fut.cancel()
+        self._pending.clear()
+
+    async def call(self, method: str, **params) -> Any:
+        """Send a JSON-RPC request; the reply is delivered by messages()."""
+        req_id = next(self._ids)
+        fut = asyncio.get_running_loop().create_future()
+        self._pending[req_id] = fut
+        await self._ws.send_json({"jsonrpc": "2.0", "method": method, "params": params,
+                                  "id": req_id})
+        return await asyncio.wait_for(fut, timeout=30)
+
+    async def messages(self) -> AsyncIterator[dict]:
+        """Yield notifications until the socket closes. Replies resolve call() instead."""
+        async for msg in self._ws:
+            if msg.type != aiohttp.WSMsgType.TEXT:
+                if msg.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSED):
+                    break
+                continue
+            data = json.loads(msg.data)
+            fut = self._pending.pop(data.get("id"), None) if "id" in data else None
+            if fut is not None:
+                if "error" in data:
+                    fut.set_exception(MoonrakerError(data["error"].get("message", data["error"])))
+                else:
+                    fut.set_result(data.get("result"))
+            elif "method" in data:
+                yield data
