@@ -4,6 +4,9 @@ import asyncio
 import itertools
 import json
 import logging
+import re
+import shutil
+import zipfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -13,14 +16,40 @@ import aiohttp
 from .config import Printer
 
 FRAMES_ROOT = "timelapse_frames"
+# moonraker-timelapse's output folder; with "Save Frames" on it holds a
+# <video name>_frames.zip per completed print.
+VIDEOS_ROOT = "timelapse"
+SAVED_FRAMES_SUFFIX = "_frames.zip"
+FRAME_RE = re.compile(r"frame\d+\.jpg")
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=60)
 # Finished videos can be tens of MB; cap stalls, not total transfer time.
 FILE_TIMEOUT = aiohttp.ClientTimeout(sock_connect=15, sock_read=120)
 DOWNLOAD_RETRIES = 3
+# Building a zip of ~1000 frames on a slow eMMC can take a while.
+ZIP_TIMEOUT = aiohttp.ClientTimeout(total=900)
+ZIP_FREE_MARGIN = 50 * 1024 * 1024
 
 
 class MoonrakerError(Exception):
     pass
+
+
+def extract_frames(archive: Path, dest: Path) -> int:
+    """Unpack frame*.jpg from a zip as frame000001.jpg.. in name order, with no gaps.
+
+    Handles both Moonraker's /server/files/zip ("timelapse_frames/frameN.jpg")
+    and moonraker-timelapse's saved-frames zip (bare "frameN.jpg").
+    Returns the number of frames written.
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive) as z:
+        members = sorted((i for i in z.infolist()
+                          if FRAME_RE.fullmatch(i.filename.rsplit("/", 1)[-1])),
+                         key=lambda i: i.filename.rsplit("/", 1)[-1])
+        for n, info in enumerate(members, 1):
+            with z.open(info) as src, (dest / f"frame{n:06d}.jpg").open("wb") as out:
+                shutil.copyfileobj(src, out)
+    return len(members)
 
 
 class Moonraker:
@@ -161,12 +190,55 @@ class Moonraker:
                         await asyncio.sleep(2 * attempt)
 
         await asyncio.gather(*(fetch(i, f) for i, f in enumerate(frames, 1)))
+        return self._close_gaps(dest, len(frames))
 
-        # Close any gaps left by skipped frames so ffmpeg's frame%06d sees a run.
+    async def download_frames_zip(self, frames: list[dict], dest: Path, zip_root: str) -> int:
+        """Like download_frames, but via one uncompressed zip built by Moonraker.
+
+        The zip is written to zip_root on the printer (the frames root itself is
+        usually read-only), downloaded in one request, and deleted again.
+        Raises MoonrakerError if the printer lacks space or can't build it.
+        """
+        need = sum(f.get("size", 0) for f in frames) + ZIP_FREE_MARGIN
+        info = await self._request("GET", "/server/files/directory",
+                                   {"path": zip_root, "extended": "false"})
+        free = (info.get("disk_usage") or {}).get("free")
+        if free is not None and free < need:
+            raise MoonrakerError(f"only {free / 1e6:.0f} MB free in '{zip_root}', "
+                                 f"zip needs {need / 1e6:.0f} MB")
+
+        name = f"timelapse_offload_{frames[0]['modified']:.0f}.zip"
+        body = {"dest": f"{zip_root}/{name}", "store_only": True,
+                "items": [f"{FRAMES_ROOT}/{f['path']}" for f in frames]}
+        async with self.session.post(self.printer.base_url + "/server/files/zip", json=body,
+                                     headers=self.headers, timeout=ZIP_TIMEOUT) as resp:
+            reply = await resp.json(content_type=None)
+            if resp.status != 200:
+                msg = (reply or {}).get("error", {}).get("message", resp.reason)
+                raise MoonrakerError(f"zip frames: {resp.status} {msg}")
+        local = dest.parent / name
+        try:
+            await self.download_file(zip_root, name, local)
+        finally:
+            try:
+                await self.delete_file(zip_root, name)
+            except (MoonrakerError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+                self.log.warning("could not delete %s/%s from printer: %s", zip_root, name, e)
+        try:
+            got = await asyncio.to_thread(extract_frames, local, dest)
+        finally:
+            local.unlink(missing_ok=True)
+        if got < len(frames):
+            self.log.warning("%d of %d frames missing from zip; rendering the rest",
+                             len(frames) - got, len(frames))
+        return got
+
+    def _close_gaps(self, dest: Path, expected: int) -> int:
+        """Renumber frame*.jpg in dest so ffmpeg's frame%06d sees an unbroken run."""
         got = sorted(dest.glob("frame*.jpg"))
-        if len(got) < len(frames):
+        if len(got) < expected:
             self.log.warning("%d of %d frames unavailable; rendering the rest",
-                             len(frames) - len(got), len(frames))
+                             expected - len(got), expected)
             for n, path in enumerate(got, 1):
                 want = dest / f"frame{n:06d}.jpg"
                 if path != want:

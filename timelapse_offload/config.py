@@ -17,6 +17,14 @@ class Printer:
     #           printers that render on-device and only expose finished files
     #           (e.g. the Snapmaker U1's "timelapse" root).
     mode: str = "frames"
+    # --- frames mode only ---
+    # "files": download each frame with its own request (the default).
+    # "zip":   have Moonraker pack the frames into one uncompressed zip in
+    #          zip_root, download that, then delete it. Far fewer requests, for
+    #          printers whose file serving is flaky; needs room for one extra
+    #          copy of the frames. Falls back to "files" if it fails.
+    fetch: str = "files"
+    zip_root: str = "timelapse"
     # --- sync mode only ---
     sync_root: str = "timelapse"
     sync_suffixes: list[str] = field(default_factory=lambda: [".mp4", "_cover.jpg"])
@@ -54,6 +62,9 @@ class Config:
     # After a successful render+save, delete the frames from the printer so they
     # don't sit on its storage until the next print. Only the video on the NAS remains.
     delete_frames_after_render: bool = False
+    # Printers with "Save Frames" on leave a <name>_frames.zip in their timelapse
+    # folder after each completed print; delete it once its video is on the NAS.
+    delete_saved_frames: bool = True
     download_concurrency: int = 4
     max_parallel_renders: int = 1
     # How often a sync-mode printer is polled for new finished videos.
@@ -69,6 +80,9 @@ def load(path: Path) -> Config:
     names = [p.name for p in printers]
     if len(set(names)) != len(names):
         raise ValueError(f"{path}: printer names must be unique")
+    for p in printers:
+        if p.fetch not in ("files", "zip"):
+            raise ValueError(f"{path}: {p.name}: fetch must be 'files' or 'zip'")
     ffmpeg = FfmpegOptions(**(raw.pop("ffmpeg", None) or {}))
     for key in ("output_dir", "work_dir", "state_file"):
         if key in raw:

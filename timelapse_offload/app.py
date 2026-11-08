@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import shutil
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -12,9 +13,14 @@ import aiohttp
 
 from . import render
 from .config import Config, Printer
-from .moonraker import Moonraker, MoonrakerError
+from .moonraker import (SAVED_FRAMES_SUFFIX, VIDEOS_ROOT, Moonraker, MoonrakerError,
+                        extract_frames)
 
 RECONNECT_MIN, RECONNECT_MAX = 5, 300
+# How long to wait after a print completes for "Save Frames" to write its zip,
+# and how far apart two listings must agree on its size before we take it.
+SAVED_ZIP_WAIT = 120
+ZIP_STABLE_SECONDS = 5
 NO_TIMELAPSE_RETRY = 600
 # moonraker-timelapse may still be saving the last frame when print_stats flips to complete.
 SETTLE_SECONDS = 5
@@ -52,6 +58,12 @@ def frame_set_key(frames: list[dict]) -> str:
 def safe_name(gcode_path: str) -> str:
     stem = Path(gcode_path or "unknown").stem
     return re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("_") or "unknown"
+
+
+def saved_video_name(zip_name: str) -> str:
+    """timelapse_<file>.gcode_<date>_frames.zip -> timelapse_<file>_<date>."""
+    base = zip_name[:-len(SAVED_FRAMES_SUFFIX)].replace(".gcode_", "_")
+    return re.sub(r"[^A-Za-z0-9._-]+|_{2,}", "_", base).strip("_") or "timelapse"
 
 
 class Watcher:
@@ -199,17 +211,119 @@ class Watcher:
         task.add_done_callback(self.tasks.discard)
 
     async def process(self, settle: bool = True, force: bool = False) -> Path | None:
-        """Fetch the printer's current frames and render them. Returns the video path."""
+        """Render the printer's timelapse(s). Returns the last video path.
+
+        settle=True means a print just ended (live trigger); False is catch-up.
+        """
         async with self.busy:
             try:
                 if settle:
                     await asyncio.sleep(SETTLE_SECONDS)
-                return await self._process(force)
+                # Re-read so changes made in Mainsail/Fluidd since connecting apply.
+                settings = await self.mr.timelapse_settings() or {}
+                video = None
+                if settings.get("saveframes") and not force:
+                    # Only a completed print gets a saved zip; wait for it then.
+                    wait = settle and self.print_state == "complete"
+                    videos = await self._process_saved(settings, wait)
+                    video = videos[-1] if videos else None
+                # Loose frames: no zip came (cancelled print, Save Frames off), or forced.
+                # Frames already rendered from their zip are marked done and skipped.
+                return await self._process(settings, force) or video
             except Exception:
                 self.log.exception("timelapse failed")
                 return None
 
-    async def _process(self, force: bool) -> Path | None:
+    async def _process_saved(self, settings: dict, wait: bool) -> list[Path]:
+        """Render every saved-frames zip on the printer, deleting each once it's on the NAS."""
+        videos = []
+        for f in await self._saved_zips(wait):
+            try:
+                video = await self._render_saved(f, settings)
+            except Exception:
+                self.log.exception("could not render %s", f["path"])
+                continue
+            if video is not None:
+                videos.append(video)
+        return videos
+
+    async def _saved_zips(self, wait: bool) -> list[dict]:
+        """Saved-frames zips not rendered yet, once they've stopped growing.
+
+        moonraker-timelapse writes the zip in place right after the print ends,
+        so a zip only counts once its size holds across two listings. With
+        wait, keep looking for up to SAVED_ZIP_WAIT for one to appear.
+        """
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        sizes: dict[str, int] = {}
+        while True:
+            files = [f for f in await self.mr.list_root(VIDEOS_ROOT)
+                     if f["path"].endswith(SAVED_FRAMES_SUFFIX) and "/" not in f["path"]
+                     and not self.state.done(self.printer.name, f["path"])]
+            ready = sorted((f for f in files if sizes.get(f["path"]) == f["size"]),
+                           key=lambda f: f["modified"])
+            elapsed = loop.time() - start
+            if files and len(ready) == len(files):
+                return ready
+            if not files and (not wait or elapsed >= SAVED_ZIP_WAIT):
+                if wait:
+                    self.log.info("no saved-frames zip appeared; using the loose frames")
+                return []
+            if files and elapsed >= 2 * SAVED_ZIP_WAIT:
+                self.log.warning("saved-frames zip still growing; skipping it for now")
+                return ready
+            sizes = {f["path"]: f["size"] for f in files}
+            await asyncio.sleep(ZIP_STABLE_SECONDS)
+
+    async def _render_saved(self, f: dict, settings: dict) -> Path | None:
+        name = f["path"]
+        work = self.cfg.work_dir / self.printer.name / safe_name(name)
+        shutil.rmtree(work, ignore_errors=True)
+        try:
+            self.log.info("downloading saved frames %s (%.1f MB)", name, f["size"] / 1e6)
+            local = work / "frames.zip"
+            await self.mr.download_file(VIDEOS_ROOT, name, local)
+            try:
+                got = await asyncio.to_thread(extract_frames, local, work / "frames")
+            except zipfile.BadZipFile as e:
+                self.log.warning("%s is not a valid zip (%s); leaving it on the printer", name, e)
+                return None
+            local.unlink()
+            if not got:
+                self.log.warning("%s has no frames", name)
+                return None
+            self.log.info("got %d frames from %s", got, name)
+            dest = await self._render_publish(work, saved_video_name(name), settings)
+            self.state.mark(self.printer.name, name)
+            await self._mark_live_frames(got)
+            if self.cfg.delete_saved_frames:
+                await self.mr.delete_file(VIDEOS_ROOT, name)
+                self.log.info("deleted %s from printer", name)
+            return dest
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    async def _mark_live_frames(self, count: int) -> None:
+        """The loose frames of the print just rendered from its zip are done too."""
+        frames = await self.mr.list_frames()
+        if frames and len(frames) == count:
+            self.state.mark(self.printer.name, frame_set_key(frames))
+
+    async def _render_publish(self, work: Path, name: str, settings: dict) -> Path:
+        """Render work/frames to <output>/<printer>/<name>.mp4 (+ preview)."""
+        async with self.render_slots:
+            video, preview = await render.render(work / "frames", work / f"{name}.mp4",
+                                                 settings, self.cfg.ffmpeg)
+        dest_dir = self.cfg.output_dir / self.printer.name
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = publish(video, dest_dir)
+        if preview is not None:
+            publish(preview, dest_dir)
+        self.log.info("saved %s", dest)
+        return dest
+
+    async def _process(self, settings: dict, force: bool) -> Path | None:
         frames = await self.mr.list_frames()
         if not frames:
             self.log.info("no frames on printer")
@@ -218,8 +332,6 @@ class Watcher:
         if not force and self.state.done(self.printer.name, key):
             self.log.debug("frames %s already rendered", key)
             return None
-        # Re-read so changes made in Mainsail/Fluidd since connecting apply.
-        settings = await self.mr.timelapse_settings() or {}
         if not self.filename:
             # print_stats forgets the file after a Klippy restart; job history doesn't.
             self.filename = await self._last_job_filename()
@@ -229,8 +341,7 @@ class Watcher:
         try:
             self.log.info("downloading %d frames", len(frames))
             started = asyncio.get_running_loop().time()
-            got = await self.mr.download_frames(frames, work / "frames",
-                                               self.cfg.download_concurrency)
+            got = await self._fetch_frames(frames, work / "frames")
             self.log.info("downloaded %d frames in %.0fs", got,
                           asyncio.get_running_loop().time() - started)
             if not got:
@@ -239,16 +350,8 @@ class Watcher:
 
             stamp = datetime.now().strftime("%Y%m%d_%H%M")
             name = f"timelapse_{safe_name(self.filename)}_{stamp}"
-            async with self.render_slots:
-                video, preview = await render.render(work / "frames", work / f"{name}.mp4",
-                                                     settings, self.cfg.ffmpeg)
-            dest_dir = self.cfg.output_dir / self.printer.name
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            dest = publish(video, dest_dir)
-            if preview is not None:
-                publish(preview, dest_dir)
+            dest = await self._render_publish(work, name, settings)
             self.state.mark(self.printer.name, key)
-            self.log.info("saved %s", dest)
             # Frames are safely rendered to the NAS now; clear them off the printer.
             if self.cfg.delete_frames_after_render:
                 removed = await self.mr.delete_frames(frames, self.cfg.download_concurrency)
@@ -256,6 +359,17 @@ class Watcher:
             return dest
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+    async def _fetch_frames(self, frames: list[dict], dest: Path) -> int:
+        if self.printer.fetch == "zip":
+            try:
+                return await self.mr.download_frames_zip(frames, dest, self.printer.zip_root)
+            except (aiohttp.ClientError, asyncio.TimeoutError, MoonrakerError, OSError,
+                    zipfile.BadZipFile) as e:
+                self.log.warning("zip download failed (%s); fetching frames one by one",
+                                 e or type(e).__name__)
+                shutil.rmtree(dest, ignore_errors=True)
+        return await self.mr.download_frames(frames, dest, self.cfg.download_concurrency)
 
     async def _last_job_filename(self) -> str:
         try:

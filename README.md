@@ -33,6 +33,16 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
+## Save Frames (printer-made zips)
+
+If a printer's timelapse settings have **Save Frames** on, moonraker-timelapse writes `timelapse_<file>_<date>_frames.zip` to its `timelapse` folder when a print completes, even with autorender off. TimelapseOffload then uses that zip: it waits for the zip to finish writing, downloads it in one request, renders it and saves the video as `timelapse_<file>_<date>.mp4`. Once the video is on the NAS it deletes the zip from the printer (`delete_saved_frames`, on by default). Zips don't get wiped when the next print starts, unlike the loose frames, so if the container was down for several prints, every one of them still gets rendered when it reconnects.
+
+Cancelled prints get no zip. With `render_cancelled` they, and printers with Save Frames off, use the frame download below. The loose frames in moonraker-timelapse's frames folder (`/tmp/timelapse/`) are read-only over the API; the plugin clears them at the next print start.
+
+## Fetching frames as a zip
+
+By default each frame is its own HTTP request, about 1000 for a long print. With `fetch: zip` on a printer, Moonraker's `/server/files/zip` packs the frames into one uncompressed zip (store only, so almost no printer CPU) in `zip_root` (default `timelapse`; the frames root itself is read-only). TimelapseOffload downloads it in one request and deletes it from the printer. This helps on printers whose file serving drops individual requests (the Creator 5). The printer needs free space in `zip_root` for one extra copy of the frames (checked first). If anything goes wrong, it falls back to frame-by-frame.
+
 ## Sync mode (printers that render on-device)
 
 Some printers render timelapses themselves and never expose the raw frames — the Snapmaker U1, for example, renders on the printer and only publishes finished MP4s. There's nothing to offload, so a printer set to `mode: sync` is instead polled on an interval, and any new videos in its file root are copied to `<output>/<printer>/`. Set `delete_after_sync: true` to also remove them from the printer after a successful copy (off by default). See the U1 block in [config.example.yaml](config.example.yaml).

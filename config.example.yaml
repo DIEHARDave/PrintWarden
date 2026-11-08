@@ -20,6 +20,10 @@ catch_up: true
 # either. Leave false unless your printer exposes the frames root writable.
 # (Sync-mode printers like the U1 use delete_after_sync instead, per printer.)
 delete_frames_after_render: false
+# With "Save Frames" on in a printer's timelapse settings, each completed print
+# leaves a <name>_frames.zip in its timelapse folder, which is rendered instead
+# of the loose frames. Delete that zip from the printer once the video is saved.
+delete_saved_frames: true
 
 download_concurrency: 4      # parallel frame downloads per printer
 max_parallel_renders: 1      # ffmpeg jobs at once across all printers
@@ -40,6 +44,12 @@ printers:
     host: 10.0.1.179
   - name: Creator5
     host: 10.0.1.107
+    # Fetch the frames as one zip instead of ~1000 separate requests. Moonraker
+    # builds it uncompressed (no CPU cost) in zip_root, which must be writable
+    # and have room for one extra copy of the frames; it's deleted after the
+    # download. On any failure this falls back to frame-by-frame.
+    fetch: zip            # "files" (default) or "zip"
+    # zip_root: timelapse
   - name: T1
     host: 10.0.1.195
   # port: 7125 and api_key: "" are the defaults; set api_key if the
