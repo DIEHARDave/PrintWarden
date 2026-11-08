@@ -230,6 +230,42 @@
   .card .cprev .active strong, .card .cprev .active span { color: var(--accent); }
   .card .cprev span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; }
 
+  /* Fourth row, always right under the card: the spools loaded in each
+     lane, like Mainsail's AFC panel. Lanes from Moonraker's lane_data,
+     names and weights from Spoolman. */
+  .tile > .spools { order: var(--o-spools, 7); }
+  .spools { border-top: 1px solid var(--border); padding: 6px 6px 4px; }
+  .no-spools .spools { display: none; }
+  .spools .lanes {
+    display: grid; gap: 4px;
+    grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+  }
+  .spools .lane {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    min-width: 0; padding: 4px 2px;
+    border: 1px solid transparent; border-radius: 6px;
+    color: inherit; text-decoration: none; text-align: center;
+  }
+  a.lane:hover { border-color: var(--accent); }
+  .spools .lane.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .spools .lane.empty { opacity: .5; }
+  .spools .lane svg { width: clamp(28px, calc(var(--tile-w, 360px) * 0.11), 48px); height: auto; margin-bottom: 2px; }
+  .spools .lane > * { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spools .lkey { font-weight: 600; font-size: 12px; }
+  .spools .lkey .sid { font-weight: 400; color: var(--muted); }
+  .spools .lname, .spools .lmeta { font-size: 11px; color: var(--muted); }
+  .spools .lname { color: var(--text); }
+  .spools .lane.dup .sid { color: var(--warn); }
+  .spools .smsg { color: var(--muted); font-size: 12px; text-align: center; padding: 6px 0; }
+  .spools .sfoot {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 4px; font-size: 11px; color: var(--muted);
+  }
+  .spools .sfoot .sstate { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spools .sfoot .sstate.warn { color: var(--warn); }
+  .spools .sfoot button { padding: 1px 8px; font-size: 11px; }
+  .spools .sfoot button:disabled { opacity: .45; cursor: default; border-color: var(--border); }
+
   .zoom iframe {
     width: min(100%, calc((100vh - 64px) * var(--zoom-ar, 5 / 3)));
     aspect-ratio: var(--zoom-ar, 5 / 3);
@@ -279,6 +315,12 @@
     font: inherit; color: var(--text); background: var(--bg);
     border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px;
   }
+  .spoolman-url { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--muted); }
+  .spoolman-url input {
+    flex: 1; max-width: 360px;
+    font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px;
+  }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .actions .spacer { flex: 1; }
   @media (max-width: 700px) {
@@ -311,6 +353,7 @@
   <label><input id="logos" type="checkbox"> Logos</label>
   <label><input id="screens" type="checkbox"> Screens</label>
   <label title="Mainsail-style printer card: print thumbnail, status and temperatures"><input id="cards" type="checkbox"> Cards</label>
+  <label title="Spools loaded in each lane, with Spoolman names and weights. The spools row always sits under the card."><input id="spools" type="checkbox"> Spools</label>
   <label title="Order of the rows in each printer's column">Rows
     <select id="rowOrder">
       <option value="cam,screen,card">Camera › Screen › Card</option>
@@ -339,6 +382,7 @@
   <h2>Printers</h2>
   <p>Leave Name empty to use the name set in the printer's Mainsail. Host is the printer's address. Stream is the camera's MJPEG path on that host, or a full URL. Screen is the remote screen page (Zmod and U1: /screen/); leave it empty if the printer has none. Changes are saved in this browser.</p>
   <div class="rows" id="rows"></div>
+  <label class="spoolman-url">Spoolman <input type="text" id="spoolmanUrl" placeholder="http://10.0.1.206:7912 (empty = off)"></label>
   <div class="actions">
     <button type="button" id="addRow">Add printer</button>
     <button type="button" id="resetRows">Reset to defaults</button>
@@ -376,7 +420,9 @@ const OLD_DEFAULT_NAMES = ["U1", "AD5X 179", "AD5X 198", "Creator 5", "Klipper1"
 const MOVED_HOSTS = { "10.0.1.83": "10.0.1.107" };
 
 const MOONRAKER_PORT = 7125;
+const DEFAULT_SPOOLMAN = "http://10.0.1.206:7912";
 const STATUS_INTERVAL_MS = 3000;
+const SPOOLS_INTERVAL_MS = 15000;
 const RETRY_MS = 5000;
 
 // --- persistence (per-browser convenience only) ----------------------
@@ -438,9 +484,10 @@ let printers = store.get("printers", null) || structuredClone(DEFAULT_PRINTERS);
   if (migrated) store.set("printers", printers);
 }
 const view = Object.assign(
-  { size: 360, gap: 6, ar: "4 / 3", fit: "contain", compact: false, screens: true, touch: false, logos: true, cards: true, rowOrder: "cam,screen,card" },
+  { size: 360, gap: 6, ar: "4 / 3", fit: "contain", compact: false, screens: true, touch: false, logos: true, cards: true, spools: true, rowOrder: "cam,screen,card" },
   store.get("view", {})
 );
+let spoolmanBase = store.get("spoolman", DEFAULT_SPOOLMAN);
 
 // --- helpers ----------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -573,7 +620,13 @@ function applyView() {
   $("touch").value = view.touch ? "inline" : "zoom";
   document.body.classList.toggle("no-cards", !view.cards);
   $("cards").checked = view.cards;
-  view.rowOrder.split(",").forEach((row, i) => root.setProperty("--o-" + row, i + 1));
+  const spoolsChanged = document.body.classList.contains("no-spools") === view.spools;
+  document.body.classList.toggle("no-spools", !view.spools);
+  if (spoolsChanged && view.spools) refreshSpools();
+  $("spools").checked = view.spools;
+  // Even numbers, so the spools row can follow the card at card + 1
+  view.rowOrder.split(",").forEach((row, i) => root.setProperty("--o-" + row, (i + 1) * 2));
+  root.setProperty("--o-spools", (view.rowOrder.split(",").indexOf("card") + 1) * 2 + 1);
   $("rowOrder").value = view.rowOrder;
   $("size").max = Math.max(1200, view.size);
   $("size").value = view.size; $("sizeVal").textContent = view.size + " px";
@@ -613,8 +666,8 @@ function fitWidth() {
   let k = b / a;                  // camera
   if (view.screens) k += 3 / 5;   // screen row
   if (view.cards) k += 2 / 3;     // card image
-  const el = vis[0].el;
-  const fixed = el.offsetHeight - el.offsetWidth * k;
+  // The tallest tile: the spools row differs between printers
+  const fixed = Math.max(...vis.map((t) => t.el.offsetHeight - t.el.offsetWidth * k));
 
   const n = vis.length, gap = view.gap;
   let best = 0;
@@ -658,6 +711,7 @@ $("screens").addEventListener("change", (e) => { view.screens = e.target.checked
 $("logos").addEventListener("change", (e) => { view.logos = e.target.checked; applyView(); });
 $("touch").addEventListener("change", (e) => { view.touch = e.target.value === "inline"; applyView(); });
 $("cards").addEventListener("change", (e) => { view.cards = e.target.checked; applyView(); });
+$("spools").addEventListener("change", (e) => { view.spools = e.target.checked; applyView(); });
 $("rowOrder").addEventListener("change", (e) => { view.rowOrder = e.target.value; applyView(); });
 
 // --- tiles ------------------------------------------------------------
@@ -693,6 +747,10 @@ function buildGrid() {
           <span class="copen"><span>OPEN MAINSAIL</span></span>
         </a>
         <div class="cprev"></div>
+      </div>
+      <div class="spools">
+        <div class="lanes"><div class="smsg">Loading spools…</div></div>
+        <div class="sfoot"><span class="sstate"></span><button type="button" class="ssync" disabled title="Set each loaded spool's Location in Spoolman to this printer and lane, and clear it on spools no longer loaded here">Sync</button></div>
       </div>`;
     grid.appendChild(el);
     const t = {
@@ -711,8 +769,17 @@ function buildGrid() {
       msg: el.querySelector(".msg"),
       frame: el.querySelector(".screen iframe"),
       retry: null,
+      lanesEl: el.querySelector(".spools .lanes"),
+      sstate: el.querySelector(".spools .sstate"),
+      ssync: el.querySelector(".spools .ssync"),
+      lanes: null,       // lane_data entries, null until loaded
+      laneState: "",     // "ok" | "none" (no lane_data) | "offline"
+      activeSpool: null, // Moonraker's active Spoolman spool
+      activeTool: null,  // 0-based head in use on multi-head printers
+      syncMsg: "",
     };
     el.querySelector(".shield")?.addEventListener("click", () => openScreenZoom(t));
+    t.ssync.addEventListener("click", () => syncSpools(t));
     t.logo.addEventListener("load", () => { applyLogoBacking(t); t.logo.hidden = false; });
     t.logo.addEventListener("error", () => { t.logo.hidden = true; });
     t.clogo.addEventListener("load", () => { t.clogo.hidden = false; });
@@ -837,6 +904,7 @@ async function pollOne(t) {
     stateEl.title = s.print_stats?.message || "";
 
     const ax = activeExtruder(s, heaters);
+    t.activeTool = heaters.extruders.length > 1 ? toolNumber(ax) : null;
     const e = s[ax], b = s.heater_bed;
     const eLabel = heaters.extruders.length > 1 ? "T" + toolNumber(ax) : "E";
     tempsEl.textContent = [
@@ -937,6 +1005,216 @@ function updateCardImage(t) {
 }
 function pollAll() { if (!document.hidden) tiles.forEach(pollOne); }
 setInterval(pollAll, STATUS_INTERVAL_MS);
+
+// --- fourth row: loaded spools ----------------------------------------
+// Lanes come from Moonraker's lane_data namespace, which the printers'
+// filament plugins write (FF_NFC, afclite, HelixScreen, SpoolLink): one
+// entry per lane with its color, material and Spoolman spool_id. Names,
+// weights and locations come from Spoolman. Sync writes the Location field
+// in Spoolman as "<printer name> <lane>", so Spoolman shows where each
+// spool is.
+let spoolmanSpools = new Map(); // id -> Spoolman spool
+let spoolmanOk = false;
+
+async function spoolmanFetch(path, init = {}, ms = 6000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(spoolmanBase.replace(/\/+$/, "") + path, { ...init, signal: ctrl.signal });
+    if (!res.ok) throw new Error(res.status);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function loadSpoolman() {
+  if (!spoolmanBase) { spoolmanSpools = new Map(); spoolmanOk = false; return; }
+  try {
+    // Archived too, so a lane still pointing at one resolves
+    const list = await spoolmanFetch("/api/v1/spool?allow_archived=true");
+    spoolmanSpools = new Map(list.map((s) => [s.id, s]));
+    spoolmanOk = true;
+  } catch {
+    spoolmanOk = false;
+  }
+}
+async function loadLanes(t) {
+  if (t.p.show === false) return;
+  try {
+    const db = await getJson(moonrakerUrl(t.p, "/server/database/item?namespace=lane_data"), 4000);
+    t.lanes = Object.entries(db?.value || {})
+      .filter(([, v]) => v && typeof v === "object" && ("lane" in v || "spool_id" in v))
+      .map(([key, v]) => ({ key, ...v }))
+      .sort((a, b) => (+a.lane - +b.lane) || a.key.localeCompare(b.key, undefined, { numeric: true }));
+    t.laneState = "ok";
+  } catch (e) {
+    // 404: Moonraker is up but nothing writes lane_data on this printer
+    t.lanes = [];
+    t.laneState = e.message === "404" ? "none" : "offline";
+  }
+  try {
+    t.activeSpool = (await getJson(moonrakerUrl(t.p, "/server/spoolman/spool_id"), 4000))?.spool_id ?? null;
+  } catch {
+    t.activeSpool = null;
+  }
+}
+let spoolsBusy = false;
+async function refreshSpools() {
+  if (!view.spools || document.hidden || spoolsBusy) return;
+  spoolsBusy = true;
+  try {
+    await Promise.all([loadSpoolman(), ...tiles.map(loadLanes)]);
+    tiles.forEach(renderSpools);
+    if (view.fitWin) scheduleFit();
+  } finally {
+    spoolsBusy = false;
+  }
+}
+setInterval(refreshSpools, SPOOLS_INTERVAL_MS);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshSpools(); });
+
+const isId = (v) => Number.isInteger(v) && v > 0;
+// "#F97E49", "F97E49" or "F97E49FF" -> "#F97E49"
+function normHex(c) {
+  const m = String(c || "").match(/^#?([0-9a-f]{6})/i);
+  return m ? "#" + m[1] : "";
+}
+function spoolSvg(color, active) {
+  const ring = active ? "var(--accent)" : "rgba(127,127,127,.55)";
+  if (!color) {
+    return `<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17" fill="none" stroke="${ring}" stroke-width="2" stroke-dasharray="4 3"/><circle cx="20" cy="20" r="5" fill="none" stroke="${ring}" stroke-width="2"/></svg>`;
+  }
+  return `<svg viewBox="0 0 40 40">
+    <circle cx="20" cy="20" r="18" fill="${color}" stroke="${ring}" stroke-width="2"/>
+    <circle cx="20" cy="20" r="12.5" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="1"/>
+    <circle cx="20" cy="20" r="7.5" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1"/>
+    <circle cx="20" cy="20" r="5" fill="var(--panel)" stroke="rgba(0,0,0,.35)" stroke-width="1.5"/>
+  </svg>`;
+}
+
+// Spool id -> Location text this printer gives it: one per lane, plus the
+// active spool on its own when it sits in no lane (single-head printers)
+function spoolTargets(t) {
+  const name = displayName(t);
+  const m = new Map();
+  (t.lanes || []).forEach((l) => { if (isId(l.spool_id) && !m.has(l.spool_id)) m.set(l.spool_id, `${name} ${l.key}`); });
+  if (isId(t.activeSpool) && !m.has(t.activeSpool)) m.set(t.activeSpool, name);
+  return m;
+}
+// Spools another printer also claims. Sync leaves those alone until one
+// printer drops it, since each would keep taking the Location back.
+function claimedElsewhere(t, id) {
+  return tiles.filter((o) => o !== t && o.p.show !== false && spoolTargets(o).has(id)).map(displayName);
+}
+function syncPlan(t) {
+  const name = displayName(t);
+  const targets = spoolTargets(t);
+  const changes = [], conflicts = [];
+  targets.forEach((location, id) => {
+    const s = spoolmanSpools.get(id);
+    if (!s) return;
+    const others = claimedElsewhere(t, id);
+    if (others.length) { conflicts.push({ id, others }); return; }
+    if ((s.location || "") !== location) changes.push({ id, location });
+  });
+  // Spools Spoolman still places here that no lane holds any more
+  spoolmanSpools.forEach((s, id) => {
+    const loc = s.location || "";
+    if (!targets.has(id) && (loc === name || loc.startsWith(name + " "))) changes.push({ id, location: "" });
+  });
+  return { changes, conflicts };
+}
+
+function renderSpools(t) {
+  if (t.lanes === null) return;
+  const base = spoolmanBase.replace(/\/+$/, "");
+  let lanes = t.lanes;
+  // No lane_data but an active spool (single-head printer): show that one
+  if (!lanes.length && isId(t.activeSpool)) lanes = [{ key: "Active", spool_id: t.activeSpool }];
+
+  if (!lanes.length) {
+    t.lanesEl.innerHTML = `<div class="smsg">${t.laneState === "offline" ? "Disconnected" : "No lanes or active spool"}</div>`;
+  } else {
+    t.lanesEl.innerHTML = lanes.map((l) => {
+      const id = isId(l.spool_id) ? l.spool_id : null;
+      const s = id ? spoolmanSpools.get(id) : null;
+      const f = s?.filament || {};
+      // The lane's own color is what the printer believes is loaded
+      const color = normHex(l.color) || normHex(f.color_hex);
+      const name = s
+        ? [f.vendor?.name, f.name].filter(Boolean).join(" ")
+        : (l.name || l.spool_name || l.ff_nfc_name || l.zmod_nfc_name || l.spoolsync_product_name || "");
+      const material = f.material || l.material || l.helix_material || l.spoolsync_material || "";
+      const weight = s && s.remaining_weight != null ? Math.round(s.remaining_weight) + " g" : "";
+      const empty = !id && !color && !material;
+      const active = (id && id === t.activeSpool) || (t.activeTool !== null && String(l.lane) === String(t.activeTool));
+      const dup = id ? claimedElsewhere(t, id) : [];
+
+      const tip = [
+        l.key + (id ? ` · spool #${id}` : ""),
+        name, material, weight,
+        s?.location ? "Spoolman location: " + s.location : "",
+        id && spoolmanOk && !s ? "Not found in Spoolman" : "",
+        dup.length ? "Also loaded in " + dup.join(", ") : "",
+        active ? "Active" : "",
+      ].filter(Boolean).join("\n");
+      const cls = "lane" + (active ? " active" : "") + (empty ? " empty" : "") + (dup.length ? " dup" : "");
+      const inner = `
+        ${spoolSvg(color, active)}
+        <span class="lkey">${esc(l.key)}${id ? ` <span class="sid">#${id}${dup.length ? " ⚠" : ""}${spoolmanOk && !s ? "?" : ""}</span>` : ""}</span>
+        <span class="lname">${esc(empty ? "Empty" : name || (id ? "" : "No spool"))}</span>
+        <span class="lmeta">${esc([material, weight].filter(Boolean).join(" · "))}</span>`;
+      return id && base
+        ? `<a class="${cls}" href="${esc(base)}/spool/show/${id}" target="_blank" rel="noopener" title="${esc(tip)}">${inner}</a>`
+        : `<div class="${cls}" title="${esc(tip)}">${inner}</div>`;
+    }).join("");
+  }
+
+  // Footer: whether Spoolman's locations match, and the Sync button
+  let text = "", warn = false;
+  const plan = spoolmanOk ? syncPlan(t) : { changes: [], conflicts: [] };
+  if (!spoolmanBase) text = "Spoolman off (Printers…)";
+  else if (!spoolmanOk) { text = "Spoolman unreachable"; warn = true; }
+  else if (t.laneState === "offline") text = "";
+  else {
+    const parts = [];
+    if (t.syncMsg) parts.push(t.syncMsg);
+    parts.push(plan.changes.length ? `${plan.changes.length} location${plan.changes.length > 1 ? "s" : ""} to sync` : "Spoolman in sync");
+    if (plan.conflicts.length) {
+      parts.push(plan.conflicts.map((c) => `#${c.id} also in ${c.others.join(", ")}`).join("; "));
+      warn = true;
+    }
+    text = parts.join(" · ");
+  }
+  t.sstate.textContent = text;
+  t.sstate.title = text;
+  t.sstate.classList.toggle("warn", warn);
+  t.ssync.disabled = !plan.changes.length;
+}
+
+async function syncSpools(t) {
+  const { changes } = syncPlan(t);
+  if (!changes.length) return;
+  t.ssync.disabled = true;
+  t.sstate.textContent = "Syncing…";
+  let ok = 0, failed = 0;
+  for (const c of changes) {
+    try {
+      const s = await spoolmanFetch(`/api/v1/spool/${c.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ location: c.location }),
+      });
+      spoolmanSpools.set(s.id, s);
+      ok++;
+    } catch {
+      failed++;
+    }
+  }
+  t.syncMsg = failed ? `${failed} update${failed > 1 ? "s" : ""} failed` : `Updated ${ok}`;
+  tiles.forEach(renderSpools);
+  setTimeout(() => { t.syncMsg = ""; renderSpools(t); }, 8000);
+}
 
 // --- enlarged view ----------------------------------------------------
 function openZoom(t) {
@@ -1069,7 +1347,11 @@ $("rows").addEventListener("click", (e) => {
   $("rows").addEventListener("pointerup", finish);
   $("rows").addEventListener("pointercancel", finish);
 }
-$("settingsBtn").addEventListener("click", () => { fillRows(printers); $("settings").showModal(); });
+$("settingsBtn").addEventListener("click", () => {
+  fillRows(printers);
+  $("spoolmanUrl").value = spoolmanBase;
+  $("settings").showModal();
+});
 $("addRow").addEventListener("click", () => {
   $("rows").insertAdjacentHTML("beforeend", rowHtml({ name: "", host: "", stream: "/webcam/?action=stream", screen: "", rotate: 0, flip: false, show: true }));
 });
@@ -1105,15 +1387,19 @@ $("cancelSettings").addEventListener("click", () => $("settings").close());
 $("saveSettings").addEventListener("click", () => {
   printers = readRows();
   store.set("printers", printers);
+  spoolmanBase = $("spoolmanUrl").value.trim();
+  store.set("spoolman", spoolmanBase);
   $("settings").close();
   buildGrid();
   pollAll();
+  refreshSpools();
 });
 
 // --- go ---------------------------------------------------------------
 buildGrid();
 applyView();
 pollAll();
+refreshSpools();
 </script>
 </body>
 </html>
