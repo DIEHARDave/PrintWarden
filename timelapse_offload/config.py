@@ -61,7 +61,9 @@ class Config:
     catch_up: bool = True
     # After a successful render+save, delete the frames from the printer so they
     # don't sit on its storage until the next print. Only the video on the NAS remains.
-    delete_frames_after_render: bool = False
+    # Only works where the frames folder sits inside a writable root (Zmod);
+    # elsewhere it's read-only and the plugin clears it at the next print start.
+    delete_frames_after_render: bool = True
     # Printers with "Save Frames" on leave a <name>_frames.zip in their timelapse
     # folder after each completed print; delete it once its video is on the NAS.
     delete_saved_frames: bool = True

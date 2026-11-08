@@ -118,14 +118,41 @@ class Moonraker:
                 msg = (body or {}).get("error", {}).get("message", resp.reason)
                 raise MoonrakerError(f"delete {root}/{path}: {resp.status} {msg}")
 
+    async def frames_delete_path(self) -> tuple[str, str] | None:
+        """A writable root (and prefix in it) through which the frames can be deleted.
+
+        moonraker-timelapse registers timelapse_frames read-only, but on some
+        setups (Zmod: gcodes/timelapse/tmp) its folder sits inside a writable
+        root, so the frames can be deleted through that one. None if not.
+        """
+        roots = await self.get("/server/files/roots")
+        frames = next((r for r in roots if r["name"] == FRAMES_ROOT), None)
+        if frames is None:
+            return None
+        if "w" in frames.get("permissions", ""):
+            return FRAMES_ROOT, ""
+        target = frames["path"].rstrip("/") + "/"
+        parents = [r for r in roots if "w" in r.get("permissions", "")
+                   and target.startswith(r["path"].rstrip("/") + "/")]
+        if not parents:
+            return None
+        parent = max(parents, key=lambda r: len(r["path"]))
+        return parent["name"], target[len(parent["path"].rstrip("/")) + 1:]
+
     async def delete_frames(self, frames: list[dict], concurrency: int) -> int:
         """Delete the given frame files from the printer. Returns how many went.
 
-        Many printers register the timelapse_frames root read-only, so the API
-        rejects deletes with 405. We detect that on the first hit and stop
-        instead of hammering the printer with a reject per frame. (The plugin
-        clears the frames itself when the next print starts.)
+        Goes through a writable root that contains the frames folder if there
+        is one. Otherwise the frames root is read-only and the API rejects
+        deletes (405), so we don't try; the plugin clears the frames itself
+        when the next print starts.
         """
+        found = await self.frames_delete_path()
+        if found is None:
+            self.log.info("frames folder is read-only on this printer; the plugin "
+                          "clears it at the next print start")
+            return 0
+        root, prefix = found
         sem = asyncio.Semaphore(concurrency)
         deleted = 0
         blocked = False
@@ -138,7 +165,7 @@ class Moonraker:
                 if blocked:
                     return
                 try:
-                    await self.delete_file(FRAMES_ROOT, frame["path"])
+                    await self.delete_file(root, prefix + frame["path"])
                     deleted += 1
                 except MoonrakerError as e:
                     if "405" in str(e):

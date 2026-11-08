@@ -308,7 +308,24 @@ class Watcher:
         """The loose frames of the print just rendered from its zip are done too."""
         frames = await self.mr.list_frames()
         if frames and len(frames) == count:
-            self.state.mark(self.printer.name, frame_set_key(frames))
+            key = frame_set_key(frames)
+            self.state.mark(self.printer.name, key)
+            await self._clear_frames(key)
+
+    async def _clear_frames(self, key: str) -> None:
+        """Delete the rendered frame set `key` from the printer, if it can be.
+
+        Re-lists first and skips if a print is running or the frames changed,
+        so a print that started during the render never loses its frames.
+        """
+        if not self.cfg.delete_frames_after_render or self.print_state in ACTIVE_STATES:
+            return
+        frames = await self.mr.list_frames()
+        if not frames or frame_set_key(frames) != key:
+            return
+        removed = await self.mr.delete_frames(frames, self.cfg.download_concurrency)
+        if removed:
+            self.log.info("removed %d/%d frames from printer", removed, len(frames))
 
     async def _render_publish(self, work: Path, name: str, settings: dict) -> Path:
         """Render work/frames to <output>/<printer>/<name>.mp4 (+ preview)."""
@@ -352,10 +369,7 @@ class Watcher:
             name = f"timelapse_{safe_name(self.filename)}_{stamp}"
             dest = await self._render_publish(work, name, settings)
             self.state.mark(self.printer.name, key)
-            # Frames are safely rendered to the NAS now; clear them off the printer.
-            if self.cfg.delete_frames_after_render:
-                removed = await self.mr.delete_frames(frames, self.cfg.download_concurrency)
-                self.log.info("removed %d/%d frames from printer", removed, len(frames))
+            await self._clear_frames(key)
             return dest
         finally:
             shutil.rmtree(work, ignore_errors=True)

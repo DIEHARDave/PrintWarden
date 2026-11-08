@@ -10,7 +10,7 @@ Printers running [moonraker-timelapse](https://github.com/mainsail-crew/moonrake
 2. When a print goes from printing to complete, downloads the frames from Moonraker's `timelapse_frames` file root (read-only HTTP; no SSH or printer-side install).
 3. Renders with ffmpeg using the printer's own timelapse settings from Mainsail/Fluidd: frame rate or variable fps/target length, rotation and flip, duplicate last frame, preview image.
 4. Saves `timelapse_<file>_<date>.mp4` and a preview `.jpg` to `<output>/<printer>/`.
-5. With `delete_frames_after_render`, removes the frames from the printer once the video is safely on the NAS, so nothing lingers on printer storage.
+5. With `delete_frames_after_render` (on by default), removes the frames from the printer once the video is safely on the NAS, where the printer allows it (see below).
 
 On connect it turns off moonraker-timelapse's `autorender` on the printer (`disable_printer_render`). Turn it back on in Mainsail/Fluidd (Settings → Timelapse) if you remove TimelapseOffload.
 
@@ -37,7 +37,7 @@ docker compose logs -f
 
 If a printer's timelapse settings have **Save Frames** on, moonraker-timelapse writes `timelapse_<file>_<date>_frames.zip` to its `timelapse` folder when a print completes, even with autorender off. TimelapseOffload then uses that zip: it waits for the zip to finish writing, downloads it in one request, renders it and saves the video as `timelapse_<file>_<date>.mp4`. Once the video is on the NAS it deletes the zip from the printer (`delete_saved_frames`, on by default). Zips don't get wiped when the next print starts, unlike the loose frames, so if the container was down for several prints, every one of them still gets rendered when it reconnects.
 
-Cancelled prints get no zip. With `render_cancelled` they, and printers with Save Frames off, use the frame download below. The loose frames in moonraker-timelapse's frames folder (`/tmp/timelapse/`) are read-only over the API; the plugin clears them at the next print start.
+Cancelled prints get no zip. With `render_cancelled` they, and printers with Save Frames off, use the frame download below. moonraker-timelapse registers its loose-frames folder read-only. Where that folder sits inside a writable root (Zmod puts it at `gcodes/timelapse/tmp`), TimelapseOffload deletes the frames through that root after rendering, never while a print is running. Elsewhere (e.g. `printer_data/timelapse_frames` on the T1 or Kiln OS) they stay until the plugin clears them at the next print start.
 
 ## Fetching frames as a zip
 

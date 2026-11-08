@@ -12,14 +12,13 @@ disable_printer_render: true
 render_cancelled: false
 # When a printer (re)connects idle with frames we haven't rendered, render them.
 catch_up: true
-# After a frame-mode render succeeds and the video is on the NAS, delete the
-# frames from the printer. NOTE: moonraker-timelapse usually registers its
-# frames folder READ-ONLY, so the API rejects deletes (405) and this does
-# nothing — the plugin already clears the frames itself when the next print
-# starts, and with rendering offloaded no videos are stored on the printer
-# either. Leave false unless your printer exposes the frames root writable.
+# After a render succeeds and the video is on the NAS, delete the loose frames
+# from the printer. moonraker-timelapse registers its frames folder read-only,
+# so this only works where that folder sits inside a writable root (Zmod keeps
+# it in gcodes/timelapse/tmp); elsewhere it's skipped and the plugin clears
+# the frames itself when the next print starts. Never runs mid-print.
 # (Sync-mode printers like the U1 use delete_after_sync instead, per printer.)
-delete_frames_after_render: false
+delete_frames_after_render: true
 # With "Save Frames" on in a printer's timelapse settings, each completed print
 # leaves a <name>_frames.zip in its timelapse folder, which is rendered instead
 # of the loose frames. Delete that zip from the printer once the video is saved.
