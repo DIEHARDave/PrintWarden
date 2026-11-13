@@ -1038,13 +1038,39 @@ async function loadSpoolman() {
     spoolmanOk = false;
   }
 }
+// Several writers can describe one physical lane under different keys: full
+// AFC writes one entry per mapped tool (T0..T3, a lane mapped to several tools
+// gets several), HelixScreen and Kiln write lane1..lane4. Entries with the same
+// `lane` index are one spool: keep the one with a spool, else the newest scan,
+// and label it laneN when such a key exists.
+function mergeLanes(entries) {
+  const groups = new Map(), out = [];
+  entries.forEach((e) => {
+    if (e.lane === undefined || e.lane === null || e.lane === "") { out.push(e); return; }
+    const k = String(e.lane);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(e);
+  });
+  // One naming per printer: laneN for every lane once any lane has a laneN key
+  const laneNames = entries.some((e) => /^lane\d+$/i.test(e.key));
+  groups.forEach((g, lane) => {
+    const best = [...g].sort((a, b) =>
+      (isId(b.spool_id) - isId(a.spool_id)) ||
+      String(b.scan_time || "").localeCompare(String(a.scan_time || "")) ||
+      (!!normHex(b.color) - !!normHex(a.color)))[0];
+    const named = g.find((e) => /^lane\d+$/i.test(e.key))?.key;
+    const label = named || (laneNames && /^\d+$/.test(lane) ? `lane${+lane + 1}` : best.key);
+    out.push({ ...best, key: label, keys: g.map((e) => e.key) });
+  });
+  return out;
+}
 async function loadLanes(t) {
   if (t.p.show === false) return;
   try {
     const db = await getJson(moonrakerUrl(t.p, "/server/database/item?namespace=lane_data"), 4000);
-    t.lanes = Object.entries(db?.value || {})
+    t.lanes = mergeLanes(Object.entries(db?.value || {})
       .filter(([, v]) => v && typeof v === "object" && ("lane" in v || "spool_id" in v))
-      .map(([key, v]) => ({ key, ...v }))
+      .map(([key, v]) => ({ key, ...v })))
       .sort((a, b) => (+a.lane - +b.lane) || a.key.localeCompare(b.key, undefined, { numeric: true }));
     t.laneState = "ok";
   } catch (e) {
@@ -1151,7 +1177,7 @@ function renderSpools(t) {
       const dup = id ? claimedElsewhere(t, id) : [];
 
       const tip = [
-        l.key + (id ? ` · spool #${id}` : ""),
+        l.key + (id ? ` · spool #${id}` : "") + (l.keys && l.keys.length > 1 ? ` (lane_data: ${l.keys.join(", ")})` : ""),
         name, material, weight,
         s?.location ? "Spoolman location: " + s.location : "",
         id && spoolmanOk && !s ? "Not found in Spoolman" : "",
