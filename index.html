@@ -1080,11 +1080,42 @@ async function loadLanes(t) {
     t.lanes = [];
     t.laneState = e.message === "404" ? "none" : "offline";
   }
+  // lane_data says which spool is assigned to a lane, not whether filament
+  // is in it (HelixScreen keeps the assignment after an unload). AFC's lane
+  // sensors and lane_data's own `loaded: false` decide that.
+  const afc = await loadAfcPresence(t);
+  t.lanes.forEach((l) => {
+    const tool = /^\d+$/.test(String(l.lane)) ? "T" + l.lane : "";
+    const p = afc.get(l.key) ?? afc.get(tool) ?? (l.keys || []).map((k) => afc.get(k)).find((v) => v !== undefined);
+    l.absent = p === false || (p === undefined && l.loaded === false);
+  });
   try {
     t.activeSpool = (await getJson(moonrakerUrl(t.p, "/server/spoolman/spool_id"), 4000))?.spool_id ?? null;
   } catch {
     t.activeSpool = null;
   }
+}
+// AFC lane name and mapped tools -> filament present (prep, load or in the
+// toolhead). Empty map when the printer has no AFC.
+async function loadAfcPresence(t) {
+  const m = new Map();
+  try {
+    if (!t.afcLanes) {
+      const objs = (await getJson(moonrakerUrl(t.p, "/printer/objects/list"), 4000))?.objects || [];
+      t.afcLanes = objs.filter((o) => o.startsWith("AFC_lane "));
+    }
+    if (!t.afcLanes.length) return m;
+    const q = t.afcLanes.map(encodeURIComponent).join("&");
+    const st = (await getJson(moonrakerUrl(t.p, "/printer/objects/query?" + q), 4000))?.status || {};
+    Object.entries(st).forEach(([obj, v]) => {
+      const present = !!(v.prep || v.load || v.tool_loaded);
+      m.set(obj.slice(9), present);
+      [].concat(v.map || []).forEach((tool) => { if (tool && !m.has(tool)) m.set(String(tool), present); });
+    });
+  } catch {
+    t.afcLanes = null; // retry the object list next time (printer restarted)
+  }
+  return m;
 }
 let spoolsBusy = false;
 async function refreshSpools() {
@@ -1125,7 +1156,7 @@ function spoolSvg(color, active) {
 function spoolTargets(t) {
   const name = displayName(t);
   const m = new Map();
-  (t.lanes || []).forEach((l) => { if (isId(l.spool_id) && !m.has(l.spool_id)) m.set(l.spool_id, `${name} ${l.key}`); });
+  (t.lanes || []).forEach((l) => { if (!l.absent && isId(l.spool_id) && !m.has(l.spool_id)) m.set(l.spool_id, `${name} ${l.key}`); });
   if (isId(t.activeSpool) && !m.has(t.activeSpool)) m.set(t.activeSpool, name);
   return m;
 }
@@ -1164,6 +1195,14 @@ function renderSpools(t) {
     t.lanesEl.innerHTML = `<div class="smsg">${t.laneState === "offline" ? "Disconnected" : "No lanes or active spool"}</div>`;
   } else {
     t.lanesEl.innerHTML = lanes.map((l) => {
+      // No filament in the lane: show it empty, the assigned spool only in the tooltip
+      if (l.absent) {
+        const aid = isId(l.spool_id) ? l.spool_id : null;
+        const aname = l.name || l.spool_name || l.ff_nfc_name || l.zmod_nfc_name || "";
+        const tip = [l.key + " · no filament", (aid || aname) ? `Assigned: ${aname}${aid ? " #" + aid : ""}` : ""].filter(Boolean).join("\n");
+        return `<div class="lane empty" title="${esc(tip)}">${spoolSvg("", false)}
+          <span class="lkey">${esc(l.key)}</span><span class="lname">Empty</span><span class="lmeta"></span></div>`;
+      }
       const id = isId(l.spool_id) ? l.spool_id : null;
       const s = id ? spoolmanSpools.get(id) : null;
       const f = s?.filament || {};
