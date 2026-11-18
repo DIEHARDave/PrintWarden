@@ -253,7 +253,9 @@
   .spools .lane > * { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .spools .lkey { font-weight: 600; font-size: 12px; }
   .spools .lkey .sid { font-weight: 400; color: var(--muted); }
-  .spools .lname, .spools .lmeta { font-size: 11px; color: var(--muted); }
+  /* min-height: an empty line still takes its row, so every printer's
+     spools row is the same height (all-empty lanes were one line shorter) */
+  .spools .lname, .spools .lmeta { font-size: 11px; color: var(--muted); min-height: 1lh; }
   .spools .lname { color: var(--text); }
   .spools .lane.dup .sid { color: var(--warn); }
   .spools .smsg { color: var(--muted); font-size: 12px; text-align: center; padding: 6px 0; }
