@@ -1083,7 +1083,7 @@ async function loadLanes(t) {
   // lane_data says which spool is assigned to a lane, not whether filament
   // is in it (HelixScreen keeps the assignment after an unload). AFC's lane
   // sensors and lane_data's own `loaded: false` decide that.
-  const { present: afc, order, tools } = await loadAfcPresence(t);
+  const { present: afc, order, tools, spools } = await loadAfcPresence(t);
   t.lanes.forEach((l) => {
     // lane_data's `lane` is the 0-based physical lane; its T0..T3 keys only
     // match AFC's tools while the map is 1:1, and AFC remaps tools every
@@ -1093,6 +1093,17 @@ async function loadLanes(t) {
     const idx = /^\d+$/.test(String(l.lane)) ? +l.lane : null;
     const afcLane = idx === null ? undefined : order[idx];
     if (afcLane) { l.key = afcLane; l.tools = tools.get(afcLane) || []; }
+    // AFC's own spool_id is the live assignment (SpoolLink, SET_SPOOL_ID).
+    // lane_data can lag behind it: on the U1 HelixScreen left spool 79 in T0
+    // after SpoolLink put spool 17 in E0. AFC wins when it names a spool.
+    const a = afcLane && spools.get(afcLane);
+    if (a && isId(a.spool_id) && a.spool_id !== l.spool_id) {
+      l.stale_spool_id = l.spool_id;
+      l.spool_id = a.spool_id;
+      if (normHex(a.color)) l.color = a.color;
+      if (a.material) l.material = a.material;
+      l.name = l.spool_name = l.ff_nfc_name = l.zmod_nfc_name = l.spoolsync_product_name = undefined;
+    }
     const p = (afcLane && afc.get(afcLane)) ?? afc.get(l.key) ?? (l.keys || []).map((k) => afc.get(k)).find((v) => v !== undefined);
     l.absent = p === false || (p === undefined && l.loaded === false);
   });
@@ -1106,14 +1117,14 @@ async function loadLanes(t) {
 // toolhead), AFC's lanes in physical order, and lane -> tools mapped to it
 // now. All empty when the printer has no AFC.
 async function loadAfcPresence(t) {
-  const m = new Map(), tools = new Map();
+  const m = new Map(), tools = new Map(), spools = new Map();
   let order = [];
   try {
     if (!t.afcLanes) {
       const objs = (await getJson(moonrakerUrl(t.p, "/printer/objects/list"), 4000))?.objects || [];
       t.afcLanes = objs.filter((o) => o.startsWith("AFC_lane "));
     }
-    if (!t.afcLanes.length) return { present: m, order, tools };
+    if (!t.afcLanes.length) return { present: m, order, tools, spools };
     const q = ["AFC=lanes", ...t.afcLanes.map(encodeURIComponent)].join("&");
     const st = (await getJson(moonrakerUrl(t.p, "/printer/objects/query?" + q), 4000))?.status || {};
     order = (st.AFC?.lanes || []).map(String);
@@ -1122,6 +1133,7 @@ async function loadAfcPresence(t) {
       const present = !!(v.prep || v.load || v.tool_loaded);
       const name = obj.slice(9);
       m.set(name, present);
+      spools.set(name, { spool_id: v.spool_id, color: v.color, material: v.material });
       const mapped = [].concat(v.map || []).filter(Boolean).map(String);
       tools.set(name, mapped);
       mapped.forEach((tool) => { if (!m.has(tool)) m.set(tool, present); });
@@ -1131,7 +1143,7 @@ async function loadAfcPresence(t) {
   } catch {
     t.afcLanes = null; // retry the object list next time (printer restarted)
   }
-  return { present: m, order, tools };
+  return { present: m, order, tools, spools };
 }
 let spoolsBusy = false;
 async function refreshSpools() {
