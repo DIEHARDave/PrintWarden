@@ -1083,10 +1083,17 @@ async function loadLanes(t) {
   // lane_data says which spool is assigned to a lane, not whether filament
   // is in it (HelixScreen keeps the assignment after an unload). AFC's lane
   // sensors and lane_data's own `loaded: false` decide that.
-  const afc = await loadAfcPresence(t);
+  const { present: afc, order, tools } = await loadAfcPresence(t);
   t.lanes.forEach((l) => {
-    const tool = /^\d+$/.test(String(l.lane)) ? "T" + l.lane : "";
-    const p = afc.get(l.key) ?? afc.get(tool) ?? (l.keys || []).map((k) => afc.get(k)).find((v) => v !== undefined);
+    // lane_data's `lane` is the 0-based physical lane; its T0..T3 keys only
+    // match AFC's tools while the map is 1:1, and AFC remaps tools every
+    // print. Match the physical lane through AFC's lane order instead (lane1..
+    // on Zmod/Kiln, E0.. on the U1), name the tile after it and show the tools
+    // mapped to it right now.
+    const idx = /^\d+$/.test(String(l.lane)) ? +l.lane : null;
+    const afcLane = idx === null ? undefined : order[idx];
+    if (afcLane) { l.key = afcLane; l.tools = tools.get(afcLane) || []; }
+    const p = (afcLane && afc.get(afcLane)) ?? afc.get(l.key) ?? (l.keys || []).map((k) => afc.get(k)).find((v) => v !== undefined);
     l.absent = p === false || (p === undefined && l.loaded === false);
   });
   try {
@@ -1096,26 +1103,35 @@ async function loadLanes(t) {
   }
 }
 // AFC lane name and mapped tools -> filament present (prep, load or in the
-// toolhead). Empty map when the printer has no AFC.
+// toolhead), AFC's lanes in physical order, and lane -> tools mapped to it
+// now. All empty when the printer has no AFC.
 async function loadAfcPresence(t) {
-  const m = new Map();
+  const m = new Map(), tools = new Map();
+  let order = [];
   try {
     if (!t.afcLanes) {
       const objs = (await getJson(moonrakerUrl(t.p, "/printer/objects/list"), 4000))?.objects || [];
       t.afcLanes = objs.filter((o) => o.startsWith("AFC_lane "));
     }
-    if (!t.afcLanes.length) return m;
-    const q = t.afcLanes.map(encodeURIComponent).join("&");
+    if (!t.afcLanes.length) return { present: m, order, tools };
+    const q = ["AFC=lanes", ...t.afcLanes.map(encodeURIComponent)].join("&");
     const st = (await getJson(moonrakerUrl(t.p, "/printer/objects/query?" + q), 4000))?.status || {};
+    order = (st.AFC?.lanes || []).map(String);
     Object.entries(st).forEach(([obj, v]) => {
+      if (!obj.startsWith("AFC_lane ")) return;
       const present = !!(v.prep || v.load || v.tool_loaded);
-      m.set(obj.slice(9), present);
-      [].concat(v.map || []).forEach((tool) => { if (tool && !m.has(tool)) m.set(String(tool), present); });
+      const name = obj.slice(9);
+      m.set(name, present);
+      const mapped = [].concat(v.map || []).filter(Boolean).map(String);
+      tools.set(name, mapped);
+      mapped.forEach((tool) => { if (!m.has(tool)) m.set(tool, present); });
     });
+    // Older AFC without `lanes`: the object list is in config order
+    if (!order.length) order = t.afcLanes.map((o) => o.slice(9));
   } catch {
     t.afcLanes = null; // retry the object list next time (printer restarted)
   }
-  return m;
+  return { present: m, order, tools };
 }
 let spoolsBusy = false;
 async function refreshSpools() {
@@ -1195,13 +1211,14 @@ function renderSpools(t) {
     t.lanesEl.innerHTML = `<div class="smsg">${t.laneState === "offline" ? "Disconnected" : "No lanes or active spool"}</div>`;
   } else {
     t.lanesEl.innerHTML = lanes.map((l) => {
-      // No filament in the lane: show it empty, the assigned spool only in the tooltip
+      // AFC's current tool map for this lane ("lane2 → T0"); remapped each print
+      const toolTxt = l.tools && l.tools.length ? l.tools.join(",") : "";
+      const toolTag = toolTxt ? ` <span class="sid">→ ${esc(toolTxt)}</span>` : "";
+      const toolTip = l.tools ? (toolTxt ? ` · mapped to ${toolTxt}` : " · not mapped") : "";
+      // No filament in the lane: show it empty
       if (l.absent) {
-        const aid = isId(l.spool_id) ? l.spool_id : null;
-        const aname = l.name || l.spool_name || l.ff_nfc_name || l.zmod_nfc_name || "";
-        const tip = [l.key + " · no filament", (aid || aname) ? `Assigned: ${aname}${aid ? " #" + aid : ""}` : ""].filter(Boolean).join("\n");
-        return `<div class="lane empty" title="${esc(tip)}">${spoolSvg("", false)}
-          <span class="lkey">${esc(l.key)}</span><span class="lname">Empty</span><span class="lmeta"></span></div>`;
+        return `<div class="lane empty" title="${esc(l.key + toolTip + " · no filament")}">${spoolSvg("", false)}
+          <span class="lkey">${esc(l.key)}${toolTag}</span><span class="lname">Empty</span><span class="lmeta"></span></div>`;
       }
       const id = isId(l.spool_id) ? l.spool_id : null;
       const s = id ? spoolmanSpools.get(id) : null;
@@ -1218,7 +1235,7 @@ function renderSpools(t) {
       const dup = id ? claimedElsewhere(t, id) : [];
 
       const tip = [
-        l.key + (id ? ` · spool #${id}` : "") + (l.keys && l.keys.length > 1 ? ` (lane_data: ${l.keys.join(", ")})` : ""),
+        l.key + toolTip + (id ? ` · spool #${id}` : "") + (l.keys && l.keys.length > 1 ? ` (lane_data: ${l.keys.join(", ")})` : ""),
         name, material, weight,
         s?.location ? "Spoolman location: " + s.location : "",
         id && spoolmanOk && !s ? "Not found in Spoolman" : "",
@@ -1228,7 +1245,7 @@ function renderSpools(t) {
       const cls = "lane" + (active ? " active" : "") + (empty ? " empty" : "") + (dup.length ? " dup" : "");
       const inner = `
         ${spoolSvg(color, active)}
-        <span class="lkey">${esc(l.key)}${id ? ` <span class="sid">#${id}${dup.length ? " ⚠" : ""}${spoolmanOk && !s ? "?" : ""}</span>` : ""}</span>
+        <span class="lkey">${esc(l.key)}${toolTag}${id ? ` <span class="sid">#${id}${dup.length ? " ⚠" : ""}${spoolmanOk && !s ? "?" : ""}</span>` : ""}</span>
         <span class="lname">${esc(empty ? "Empty" : name || (id ? "" : "No spool"))}</span>
         <span class="lmeta">${esc([material, weight].filter(Boolean).join(" · "))}</span>`;
       return id && base
