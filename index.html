@@ -1107,6 +1107,23 @@ async function loadLanes(t) {
     const p = (afcLane && afc.get(afcLane)) ?? afc.get(l.key) ?? (l.keys || []).map((k) => afc.get(k)).find((v) => v !== undefined);
     l.absent = p === false || (p === undefined && l.loaded === false);
   });
+  // AFC lanes nothing wrote lane_data for still get a tile, from AFC alone
+  // (entries without a lane index are matched by key: lane name or tool)
+  const seen = new Set(t.lanes.map((l) => l.key));
+  const loose = new Set(t.lanes.filter((l) => !/^\d+$/.test(String(l.lane))).map((l) => l.key));
+  order.forEach((name, idx) => {
+    if (seen.has(name) || (tools.get(name) || []).some((tool) => loose.has(tool))) return;
+    const a = spools.get(name) || {};
+    const absent = afc.get(name) === false;
+    t.lanes.push({
+      key: name, lane: idx, tools: tools.get(name) || [], absent,
+      spool_id: a.spool_id,
+      color: absent ? "" : a.color,
+      material: a.material && a.material !== "NONE" ? a.material : "",
+    });
+  });
+  if (order.length) t.lanes.sort((a, b) => (+a.lane - +b.lane) || a.key.localeCompare(b.key, undefined, { numeric: true }));
+  if (t.lanes.length && t.laneState === "none") t.laneState = "ok";
   try {
     t.activeSpool = (await getJson(moonrakerUrl(t.p, "/server/spoolman/spool_id"), 4000))?.spool_id ?? null;
   } catch {
