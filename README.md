@@ -6,6 +6,8 @@ camera, remote screen, print status and the spool in each lane.
 It is a single `index.html` with no build step and no backend. Open it from
 any static web server, or straight from disk.
 
+![Printer Monitor showing five printers: camera, remote screen, print preview, temperatures and spools for each](docs/screenshot.png)
+
 ## What it shows
 
 - **A tile for each printer**, with its MJPEG camera stream and, where the
