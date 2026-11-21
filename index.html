@@ -158,6 +158,42 @@
   .video .wbadge.warning { background: rgba(208, 138, 18, .9); }
   .video .wbadge.failing { background: rgba(210, 63, 63, .92); }
   .video .wbadge[hidden], .no-boxes .video svg.ov, .no-boxes .video .wbadge { display: none; }
+  /* Print Watch chips in the tile header: timelapse handling, and the
+     detection mode (click to step off > alert > alert + pause) */
+  .head .wchips { display: inline-flex; gap: 4px; flex: none; }
+  .head .wchip {
+    font: inherit; font-size: 11px; line-height: 16px; padding: 0 7px;
+    border-radius: 999px; border: 1px solid var(--border);
+    color: var(--muted); background: transparent; white-space: nowrap;
+  }
+  .head button.wchip { cursor: pointer; }
+  .head button.wchip:hover { border-color: var(--accent); }
+  .head button.wchip.alert { color: var(--accent); }
+  .head button.wchip.pause { color: var(--warn); }
+  .head button.wchip:disabled { opacity: .5; cursor: default; }
+  .compact .head .wchip.tl { display: none; }
+  /* Detection row: Print Watch's score, history, part position, activity */
+  .tile > .wrow { order: 40; }
+  .wrow { border-top: 1px solid var(--border); padding: 6px 7px; display: grid; gap: 5px; font-size: 12px; }
+  .wrow[hidden], .no-boxes .wrow { display: none; }
+  .wrow .wline { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; }
+  .wrow .lbl { color: var(--muted); }
+  .wrow .val { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; min-width: 64px; white-space: nowrap; }
+  .wrow .meter {
+    position: relative; height: 7px; border-radius: 4px; overflow: hidden;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 35%, transparent) 0 33.3%,
+      color-mix(in srgb, var(--warn) 35%, transparent) 33.3% 66.6%, color-mix(in srgb, var(--err) 35%, transparent) 66.6%);
+  }
+  .wrow .meter > i { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--text); border-radius: 2px; }
+  .wrow .spark { width: 100%; height: 30px; display: block; }
+  .wrow .wact { display: flex; gap: 6px; flex-wrap: wrap; }
+  .wrow details summary { cursor: pointer; color: var(--muted); }
+  .wrow .events { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 1px; color: var(--muted); }
+  .wrow .events b { color: var(--text); font-weight: 500; }
+  .wrow .thumbs { display: flex; gap: 5px; overflow-x: auto; margin-top: 5px; }
+  .wrow .thumbs img { height: 48px; border-radius: 3px; display: block; }
+  .wrow .werr { color: var(--err); }
+  .wrow .wmuted { color: var(--muted); }
   .tile.watch-warning { border-color: var(--warn); }
   .tile.watch-failing { border-color: var(--err); box-shadow: 0 0 0 1px var(--err); }
   .bar a.wlink {
@@ -349,6 +385,37 @@
     border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px;
   }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  /* Print Watch settings (kept on the TimelapseOffload server) */
+  #pwSet { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+  #pwSet[hidden] { display: none; }
+  #pwSet h3 { margin: 14px 0 4px; font-size: 13px; }
+  .pwrow {
+    display: grid; gap: 6px; align-items: end; padding: 6px 0;
+    grid-template-columns: 1fr 1.1fr 64px 1fr 1fr 1.1fr 70px 80px 60px;
+    border-top: 1px solid var(--border);
+  }
+  .pwrow:first-child { border-top: 0; }
+  .pwrow label, .pwglob label { display: grid; gap: 2px; font-size: 11px; color: var(--muted); }
+  .pwrow input, .pwrow select, .pwglob input, .pwglob select, #pwSubnet {
+    width: 100%; min-width: 0;
+    font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px;
+  }
+  .pwrow .more { grid-column: 1 / -1; display: none; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .pwrow.open .more { display: grid; }
+  .pwrow .icons { display: flex; gap: 2px; }
+  .pwrow .icons button { padding: 2px 7px; }
+  .pwglob { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+  .pwfound { display: grid; gap: 4px; margin-top: 6px; }
+  .pwfound div { display: flex; gap: 8px; align-items: center; background: var(--bg); padding: 4px 8px; border-radius: 5px; }
+  .pwfound .spacer { flex: 1; }
+  .pwmsg { color: var(--muted); }
+  .pwmsg.ok { color: var(--ok); }
+  .pwmsg.bad { color: var(--err); }
+  @media (max-width: 700px) {
+    .pwrow { grid-template-columns: 1fr 1fr; }
+    .pwrow .more { grid-template-columns: 1fr 1fr; }
+  }
   .actions .spacer { flex: 1; }
   @media (max-width: 700px) {
     .row { grid-template-columns: 64px 24px 1fr 1fr 28px; }
@@ -397,7 +464,7 @@
       <option value="inline">Inline</option>
     </select>
   </label>
-  <label id="boxesLbl" hidden title="Failure and moved-part boxes from Print Watch, drawn over the video"><input id="boxes" type="checkbox"> Detection</label>
+  <label id="boxesLbl" hidden title="Print Watch: failure and moved-part boxes over the video, and each printer's detection row"><input id="boxes" type="checkbox"> Detection</label>
   <span class="spacer"></span>
   <a class="wlink" id="watchLink" href="watch/" hidden title="Detection details, alert history and settings">Print Watch</a>
   <button id="settingsBtn" type="button">Printers…</button>
@@ -412,6 +479,28 @@
   <p>Leave Name empty to use the name set in the printer's Mainsail. Host is the printer's address. Stream is the camera's MJPEG path on that host, or a full URL. Screen is the remote screen page (Zmod and U1: /screen/); leave it empty if the printer has none. Changes are saved in this browser.</p>
   <div class="rows" id="rows"></div>
   <label class="spoolman-url">Spoolman <input type="text" id="spoolmanUrl" placeholder="http://10.0.1.206:7912 (empty = off)"></label>
+  <section id="pwSet" hidden>
+    <h2>Detection, alerts and timelapses</h2>
+    <p>Kept on the TimelapseOffload server, so they apply to everyone, not only this browser. Timelapse: <b>Render frames</b> renders moonraker-timelapse frames on the server; <b>Copy videos</b> copies finished videos from printers that render on-device (Snapmaker U1). Detection: <b>Alert</b> notifies; <b>Alert + pause</b> also pauses the print. Changes apply when you save, no restart. <span id="pwModel"></span></p>
+    <div id="pwList"></div>
+    <div class="actions">
+      <button type="button" id="pwAdd">Add printer</button>
+      <button type="button" id="pwAddMon" title="Add every printer on this page that is not watched yet">Add this page's printers</button>
+      <span class="spacer"></span>
+      <input id="pwSubnet" style="width:150px" placeholder="10.0.1.0/24">
+      <button type="button" id="pwScan">Find printers</button>
+    </div>
+    <div class="pwfound" id="pwFound"></div>
+    <h3>Detection and alerts</h3>
+    <div class="pwglob">
+      <label>Seconds between snapshots while printing <input id="pwInterval" type="number" min="3" step="1"></label>
+      <label>CPU threads per check <input id="pwThreads" type="number" min="1" max="8" step="1"></label>
+      <label>Discord webhook URL <input id="pwWebhook" placeholder="https://discord.com/api/webhooks/..."></label>
+      <label>Printer console message <select id="pwConsole"><option value="1">On</option><option value="0">Off</option></select></label>
+    </div>
+    <div class="actions"><button type="button" id="pwTest">Send test alert</button><span id="pwTestMsg" class="pwmsg"></span></div>
+    <p style="margin-top:10px">Scoring follows Obico's failure detection: the first 30 checks of a print (5 min at 10 s) only learn what the print normally looks like. Its thresholds are tuned for 10 s. Moved parts compares the last 2 minutes of snapshots with the 2 minutes before; its sensitivity is under ⋯.</p>
+  </section>
   <div class="actions">
     <button type="button" id="addRow">Add printer</button>
     <button type="button" id="resetRows">Reset to defaults</button>
@@ -419,6 +508,7 @@
     <button type="button" id="importSettings" title="Load settings from an exported file">Import…</button>
     <input type="file" id="importFile" accept=".json,application/json" hidden>
     <span class="spacer"></span>
+    <span id="pwSaveMsg" class="pwmsg"></span>
     <button type="button" id="cancelSettings">Cancel</button>
     <button type="button" id="saveSettings">Save</button>
   </div>
@@ -764,6 +854,7 @@ function buildGrid() {
         <span class="name"><a href="${esc(webUrl(p))}" target="_blank" rel="noopener">${esc(p.name || p.host)}</a></span>
         <span class="state">…</span>
         <span class="temps"></span>
+        <span class="wchips"></span>
       </div>
       <div class="video"><img class="cam" alt=""><img class="logo" alt="" hidden><svg class="ov" aria-hidden="true"></svg><a class="wbadge" href="watch/" target="_blank" rel="noopener" hidden></a><div class="msg">Connecting…</div></div>
       <div class="progress"><div></div></div>
@@ -784,7 +875,8 @@ function buildGrid() {
       <div class="spools">
         <div class="lanes"><div class="smsg">Loading spools…</div></div>
         <div class="sfoot"><span class="sstate"></span><button type="button" class="ssync" disabled title="Set each loaded spool's Location in Spoolman to this printer and lane, and clear it on spools no longer loaded here">Sync</button></div>
-      </div>`;
+      </div>
+      <div class="wrow" hidden></div>`;
     grid.appendChild(el);
     const t = {
       p, el,
@@ -802,6 +894,9 @@ function buildGrid() {
       msg: el.querySelector(".msg"),
       ov: el.querySelector("svg.ov"),
       wbadge: el.querySelector(".wbadge"),
+      wchips: el.querySelector(".wchips"),
+      wrow: el.querySelector(".wrow"),
+      wOpen: false,      // detection row's Activity list left open
       watch: null,       // this printer's Print Watch status, when served alongside
       frame: el.querySelector(".screen iframe"),
       retry: null,
@@ -834,6 +929,11 @@ function buildGrid() {
     });
     el.querySelector(".video").addEventListener("click", () => openZoom(t));
     t.wbadge.addEventListener("click", (e) => e.stopPropagation());
+    t.wchips.addEventListener("click", (e) => {
+      if (e.target.closest("button.wchip")) cycleDetect(t, e.target.closest("button.wchip"));
+    });
+    t.wrow.addEventListener("click", (e) => { if (e.target.closest(".wignore")) notFailure(t); });
+    t.wrow.addEventListener("toggle", (e) => { t.wOpen = e.target.open; }, true);
     tiles.push(t);
   });
   startAll();
@@ -1388,6 +1488,8 @@ function renderWatch(t) {
   const level = !watching || w.ignored ? "" : moved ? "failing" : w.level;
   t.el.classList.toggle("watch-warning", level === "warning");
   t.el.classList.toggle("watch-failing", level === "failing");
+  renderChips(t);
+  renderRow(t);
   if (!watching) { t.ov.innerHTML = ""; t.wbadge.hidden = true; return; }
 
   const fail = snap?.boxes || [], cells = w.motion?.cells || [];
@@ -1416,27 +1518,286 @@ function renderWatch(t) {
     + "Open Print Watch for details.";
   t.wbadge.hidden = false;
 }
-async function pollWatch() {
-  let next = WATCH_INTERVAL_MS;
-  if (!document.hidden) {
-    try {
-      const res = await fetch(WATCH_API, { cache: "no-store" });
-      const data = res.ok ? await res.json() : null;
-      if (!Array.isArray(data?.printers)) throw new Error("no Print Watch here");
-      watchOn = true;
-      tiles.forEach((t) => {
-        t.watch = data.printers.find((w) => w.host === t.p.host) || null;
-        renderWatch(t);
-      });
-    } catch {
-      if (watchOn) tiles.forEach((t) => { t.watch = null; renderWatch(t); });
-      watchOn = false;
-      next = 60000;
-    }
-    $("watchLink").hidden = !watchOn;
-    $("boxesLbl").hidden = !watchOn;
+
+const TL_CHIP = { frames: "timelapse", sync: "timelapse copy" };
+const DETECT_CHIP = { off: "detect off", alert: "detect + alert", pause: "detect + pause" };
+const DETECT_NEXT = { off: "alert", alert: "pause", pause: "off" };
+function renderChips(t) {
+  const w = t.watch;
+  if (!w) { t.wchips.innerHTML = ""; return; }
+  const tl = TL_CHIP[w.mode];
+  t.wchips.innerHTML = (tl ? `<span class="wchip tl" title="Timelapse: ${w.mode === "sync" ? "finished videos are copied off the printer" : "frames are rendered on the server"}">${tl}</span>` : "")
+    + `<button type="button" class="wchip ${esc(w.detect)}" title="Failure detection. Click to switch to ${esc(DETECT_CHIP[DETECT_NEXT[w.detect]] || "")}">${esc(DETECT_CHIP[w.detect] || w.detect)}</button>`;
+}
+async function cycleDetect(t, btn) {
+  const w = t.watch;
+  if (!w) return;
+  const next = DETECT_NEXT[w.detect] || "alert";
+  btn.disabled = true;
+  try {
+    const res = await fetch(`api/printers/${encodeURIComponent(w.name)}/detect`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ detect: next }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.status);
+    w.detect = next;
+  } catch (e) {
+    alert("Could not change detection: " + e.message);
   }
-  setTimeout(pollWatch, next);
+  renderWatch(t);
+  fetchWatch();
+}
+async function notFailure(t) {
+  if (!t.watch) return;
+  await fetch(`api/printers/${encodeURIComponent(t.watch.name)}/ignore`, { method: "POST" }).catch(() => {});
+  fetchWatch();
+}
+
+function watchSpark(hist) {
+  if (!hist || hist.length < 2) return "";
+  const w = 300, h = 30, t0 = hist[0][0], t1 = hist[hist.length - 1][0] || t0 + 1;
+  const pts = hist.map(([t, v]) => `${((t - t0) / Math.max(1, t1 - t0) * w).toFixed(1)},${(h - Math.min(1, v) * h).toFixed(1)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <line x1="0" x2="${w}" y1="${h * 2 / 3}" y2="${h * 2 / 3}" stroke="var(--warn)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>
+    <line x1="0" x2="${w}" y1="${h / 3}" y2="${h / 3}" stroke="var(--err)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>
+    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
+}
+const MOTION_TEXT = { learning: ["Learning the scene", "text"], ok: ["Not moved", "text"], reset: ["Picture changed, starting over", "text"],
+  candidate: ["Changed, checking it stays", "warn"], moved: ["Moved or came loose", "err"] };
+function renderRow(t) {
+  const w = t.watch;
+  if (!w) { t.wrow.hidden = true; t.wrow.innerHTML = ""; return; }
+  const watching = w.detect !== "off" && (w.state === "printing" || w.state === "paused");
+  const parts = [];
+  if (watching) {
+    const lvl = w.level, score = Math.round((w.score || 0) * 100);
+    const col = lvl === "failing" ? "err" : lvl === "warning" ? "warn" : "text";
+    const val = !w.frames ? (w.state === "paused" ? "Waiting for resume" : "Starting")
+      : lvl === "warming" ? `Learning ${w.frames}/${w.safe_frames}` : `${score}% · ${WATCH_LEVEL[lvl] || lvl}`;
+    parts.push(`<div class="wline"><span class="lbl">Failure score</span><div class="meter"><i style="left:${Math.min(99.5, score)}%"></i></div><span class="val" style="color:var(--${col})">${esc(val)}</span></div>`);
+    parts.push(watchSpark(w.history));
+    if (w.motion) {
+      const [txt, mcol] = MOTION_TEXT[w.motion.state] || MOTION_TEXT.ok;
+      const pct = Math.round(Math.min(1, w.motion.score || 0) * 100);
+      parts.push(`<div class="wline"><span class="lbl">Part position</span><div class="meter"><i style="left:${Math.min(99.5, pct)}%"></i></div><span class="val" style="color:var(--${mcol})">${esc(w.motion.state === "learning" ? txt : `${pct}% · ${txt}`)}</span></div>`);
+    }
+    if (w.ignored) parts.push('<div class="wmuted">Marked as not a failure for this print.</div>');
+    else parts.push('<div class="wact"><button type="button" class="wignore" title="Stop alerts for the rest of this print">Not a failure</button></div>');
+  }
+  if (w.error) parts.push(`<div class="werr">${esc(w.error)}</div>`);
+  const flagged = w.flagged || [];
+  if ((w.events || []).length || flagged.length) {
+    const url = (f) => `api/printers/${encodeURIComponent(w.name)}/flagged/${encodeURIComponent(f)}`;
+    parts.push(`<details${t.wOpen ? " open" : ""}><summary>Activity${flagged.length ? ` · ${flagged.length} flagged frame${flagged.length > 1 ? "s" : ""}` : ""}</summary>
+      <ul class="events">${(w.events || []).slice(0, 8).map((e) => `<li>${new Date(e.t * 1000).toLocaleTimeString()} <b>${esc(e.text)}</b></li>`).join("")}</ul>
+      ${flagged.length ? `<div class="thumbs">${flagged.map((f) => `<a href="${url(f)}" target="_blank" rel="noopener" title="${esc(f)}"><img loading="lazy" src="${url(f)}" alt=""></a>`).join("")}</div>` : ""}</details>`);
+  }
+  t.wrow.hidden = !parts.length;
+  t.wrow.innerHTML = parts.join("");
+}
+
+let watchMeta = null;   // { interval, model_ready, model_error }
+async function fetchWatch() {
+  try {
+    const res = await fetch(WATCH_API, { cache: "no-store" });
+    const data = res.ok ? await res.json() : null;
+    if (!Array.isArray(data?.printers)) throw new Error("no Print Watch here");
+    watchOn = true;
+    watchMeta = { interval: data.interval, model_ready: data.model_ready, model_error: data.model_error };
+    tiles.forEach((t) => {
+      t.watch = data.printers.find((w) => w.host === t.p.host) || null;
+      renderWatch(t);
+    });
+  } catch {
+    if (watchOn) tiles.forEach((t) => { t.watch = null; renderWatch(t); });
+    watchOn = false;
+  }
+  $("watchLink").hidden = !watchOn;
+  $("boxesLbl").hidden = !watchOn;
+  $("watchLink").title = !watchMeta ? "" : watchMeta.model_error ? "Detection model: " + watchMeta.model_error
+    : watchMeta.model_ready ? `Checking every ${watchMeta.interval}s while printing` : "Detection model loads on first print";
+  return watchOn;
+}
+async function pollWatch() {
+  const ok = document.hidden ? watchOn : await fetchWatch();
+  setTimeout(pollWatch, ok ? WATCH_INTERVAL_MS : 60000);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) fetchWatch(); });
+
+// --- Print Watch settings ---------------------------------------------
+// The server's own settings (printers it watches and renders timelapses
+// for, detection and alerts), edited in the Printers… dialog and saved with
+// its Save button. Shown only when the page is served by TimelapseOffload.
+let pwSettings = null, pwDirty = false;
+const PW_TL = [["frames", "Render frames"], ["sync", "Copy videos"], ["off", "Off"]];
+const PW_DT = [["off", "Off"], ["alert", "Alert"], ["pause", "Alert + pause"]];
+const pwOpts = (list, v) => list.map(([k, l]) => `<option value="${k}"${k === v ? " selected" : ""}>${l}</option>`).join("");
+function pwRow(p, i) {
+  return `<div class="pwrow" data-i="${i}">
+    <label>Name<input data-k="name" value="${esc(p.name)}"></label>
+    <label>Host / IP<input data-k="host" value="${esc(p.host)}"></label>
+    <label>Port<input data-k="port" type="number" value="${esc(p.port)}"></label>
+    <label>Timelapse<select data-k="mode">${pwOpts(PW_TL, p.mode)}</select></label>
+    <label>Detection<select data-k="detect">${pwOpts(PW_DT, p.detect)}</select></label>
+    <label>Webcam<select data-k="webcam"><option value="">First camera</option>${p.webcam ? `<option selected value="${esc(p.webcam)}">${esc(p.webcam)}</option>` : ""}</select></label>
+    <label>Sensitivity<input data-k="sensitivity" type="number" step="0.1" min="0.1" max="5" value="${esc(p.sensitivity)}"></label>
+    <label>Moved parts<select data-k="motion">${pwOpts([["true", "Watch"], ["false", "Off"]], String(p.motion))}</select></label>
+    <div class="icons"><button type="button" data-more title="More options">⋯</button><button type="button" data-del title="Remove">✕</button></div>
+    <div class="more">
+      <label>Moved-part sensitivity<input data-k="motion_sensitivity" type="number" step="0.1" min="0.1" max="5" value="${esc(p.motion_sensitivity)}"></label>
+      <label>Frame download<select data-k="fetch">${pwOpts([["files", "One by one"], ["zip", "As one zip"]], p.fetch)}</select></label>
+      <label>API key<input data-k="api_key" value="${esc(p.api_key)}" placeholder="only if Moonraker needs one"></label>
+      <label>Video folder (copy mode)<input data-k="sync_root" value="${esc(p.sync_root)}"></label>
+      <label>Delete after copying<select data-k="delete_after_sync">${pwOpts([["false", "No"], ["true", "Yes"]], String(p.delete_after_sync))}</select></label>
+    </div></div>`;
+}
+function pwDraw() {
+  $("pwList").innerHTML = pwSettings.printers.length ? pwSettings.printers.map(pwRow).join("")
+    : '<p>No printers. Add one, add this page\'s printers or use Find printers.</p>';
+  $("pwInterval").value = pwSettings.detection.interval;
+  $("pwThreads").value = pwSettings.detection.threads;
+  $("pwWebhook").value = pwSettings.notify.discord_webhook;
+  $("pwConsole").value = pwSettings.notify.console ? "1" : "0";
+  if (!$("pwSubnet").value) {
+    const h = pwSettings.printers.concat(printers).find((p) => /^\d+\.\d+\.\d+\.\d+$/.test(p.host));
+    $("pwSubnet").value = h ? h.host.replace(/\.\d+$/, ".0/24") : "192.168.1.0/24";
+  }
+  pwSettings.printers.forEach((p, i) => pwFillCams(i));
+}
+async function pwFillCams(i) {
+  const p = pwSettings.printers[i];
+  const sel = document.querySelector(`.pwrow[data-i="${i}"] select[data-k="webcam"]`);
+  if (!sel || !p.host) return;
+  try {
+    const res = await fetch(`api/webcams?host=${encodeURIComponent(p.host)}&port=${encodeURIComponent(p.port || 7125)}`);
+    if (!res.ok) return;
+    const names = await res.json();
+    const cur = p.webcam;
+    sel.innerHTML = `<option value="">First camera${names[0] ? ` (${esc(names[0])})` : ""}</option>` +
+      [...new Set([...names, ...(cur ? [cur] : [])])].map((n) => `<option${n === cur ? " selected" : ""} value="${esc(n)}">${esc(n)}</option>`).join("");
+  } catch {}
+}
+async function pwLoad() {
+  $("pwSaveMsg").textContent = "";
+  $("pwFound").innerHTML = "";
+  if (!watchOn && !(await fetchWatch())) { $("pwSet").hidden = true; return; }
+  try {
+    const res = await fetch("api/settings", { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    pwSettings = await res.json();
+  } catch { $("pwSet").hidden = true; pwSettings = null; return; }
+  pwDirty = false;
+  $("pwModel").textContent = !watchMeta ? "" : watchMeta.model_error ? "Detection model: " + watchMeta.model_error
+    : watchMeta.model_ready ? `Checking every ${watchMeta.interval}s while printing.` : "The detection model loads on the first print.";
+  $("pwSet").hidden = false;
+  pwDraw();
+}
+function pwMark() { pwDirty = true; $("pwSaveMsg").className = "pwmsg"; $("pwSaveMsg").textContent = "Detection settings changed"; }
+function pwBlank(host = "", name = "") {
+  return { name, host, port: 7125, api_key: "", mode: "frames", fetch: "files", zip_root: "timelapse",
+    sync_root: "timelapse", sync_suffixes: [".mp4", "_cover.jpg"], delete_after_sync: false,
+    detect: "alert", webcam: "", sensitivity: 1.0, motion: true, motion_sensitivity: 1.0 };
+}
+function pwUniqueName(name) {
+  name = (name || "printer").replace(/[^A-Za-z0-9 ._-]/g, "-").slice(0, 40);
+  while (pwSettings.printers.some((p) => p.name.toLowerCase() === name.toLowerCase())) name += "-2";
+  return name;
+}
+$("pwList").addEventListener("input", (e) => {
+  const k = e.target.dataset.k;
+  if (!k) return;
+  const p = pwSettings.printers[e.target.closest(".pwrow").dataset.i];
+  let v = e.target.value;
+  if (k === "port") v = Number(v) || 7125;
+  if (k === "sensitivity" || k === "motion_sensitivity") v = Number(v) || 1;
+  if (k === "motion" || k === "delete_after_sync") v = v === "true";
+  p[k] = v;
+  pwMark();
+});
+$("pwList").addEventListener("change", (e) => {
+  const k = e.target.dataset.k;
+  if (k === "host" || k === "port") pwFillCams(Number(e.target.closest(".pwrow").dataset.i));
+});
+$("pwList").addEventListener("click", (e) => {
+  const row = e.target.closest(".pwrow");
+  if (!row) return;
+  if (e.target.closest("[data-more]")) row.classList.toggle("open");
+  if (e.target.closest("[data-del]")) {
+    const p = pwSettings.printers[row.dataset.i];
+    if (!confirm(`Stop watching ${p.name || "this printer"}? Its timelapses already on the NAS stay.`)) return;
+    pwSettings.printers.splice(row.dataset.i, 1);
+    pwMark();
+    pwDraw();
+  }
+});
+$("pwAdd").addEventListener("click", () => {
+  pwSettings.printers.push(pwBlank());
+  pwMark();
+  pwDraw();
+  document.querySelector(`.pwrow[data-i="${pwSettings.printers.length - 1}"] input`).focus();
+});
+$("pwAddMon").addEventListener("click", () => {
+  const known = new Set(pwSettings.printers.map((p) => p.host));
+  let added = 0;
+  readRows().forEach((p) => {
+    if (!p.host || known.has(p.host)) return;
+    const t = tiles.find((x) => x.p.host === p.host);
+    pwSettings.printers.push(pwBlank(p.host, pwUniqueName(p.name || t?.mainsailName || p.host)));
+    known.add(p.host);
+    added++;
+  });
+  if (added) { pwMark(); pwDraw(); }
+  $("pwSaveMsg").className = "pwmsg";
+  $("pwSaveMsg").textContent = added ? `Added ${added}, not saved yet` : "Every printer here is already watched";
+});
+$("pwScan").addEventListener("click", async () => {
+  const btn = $("pwScan");
+  btn.disabled = true; btn.textContent = "Searching…"; $("pwFound").innerHTML = "";
+  try {
+    const res = await fetch("api/scan", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subnet: $("pwSubnet").value }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    const known = new Set(pwSettings.printers.map((p) => p.host));
+    $("pwFound").innerHTML = d.found.length ? d.found.map((f) => `<div><b>${esc(f.host)}</b>
+      <span>${esc(f.hostname)} · Klipper ${esc(f.state)}</span><span class="spacer"></span>
+      ${known.has(f.host) ? "<span>added</span>" : `<button type="button" data-addhost="${esc(f.host)}" data-hn="${esc(f.hostname)}">Add</button>`}</div>`).join("")
+      : "<p>No Moonraker found on port 7125 in that range.</p>";
+  } catch (e) { $("pwFound").innerHTML = `<p class="pwmsg bad">${esc(e.message)}</p>`; }
+  btn.disabled = false; btn.textContent = "Find printers";
+});
+$("pwFound").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-addhost]");
+  if (!b) return;
+  pwSettings.printers.push(pwBlank(b.dataset.addhost, pwUniqueName(b.dataset.hn || b.dataset.addhost)));
+  pwMark();
+  pwDraw();
+  b.replaceWith(Object.assign(document.createElement("span"), { textContent: "added" }));
+});
+for (const id of ["pwInterval", "pwThreads", "pwWebhook", "pwConsole"]) $(id).addEventListener("input", pwMark);
+$("pwTest").addEventListener("click", async () => {
+  $("pwTestMsg").textContent = "Sending…";
+  const res = await fetch("api/test-notify", { method: "POST" }).catch(() => null);
+  const d = res ? await res.json().catch(() => ({})) : {};
+  $("pwTestMsg").textContent = res?.ok ? "Sent" : d.error || "Failed";
+});
+// Saves the server side first; if it is refused the dialog stays open
+async function pwSave() {
+  if (!pwDirty || !pwSettings) return true;
+  pwSettings.detection = { interval: Number($("pwInterval").value), threads: Number($("pwThreads").value) };
+  pwSettings.notify = { discord_webhook: $("pwWebhook").value.trim(), console: $("pwConsole").value === "1" };
+  try {
+    const res = await fetch("api/settings", { method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(pwSettings) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || res.status);
+    pwSettings = d;
+    pwDirty = false;
+    return true;
+  } catch (e) {
+    $("pwSaveMsg").className = "pwmsg bad";
+    $("pwSaveMsg").textContent = "Detection settings not saved: " + e.message;
+    return false;
+  }
 }
 
 // --- enlarged view ----------------------------------------------------
@@ -1573,7 +1934,9 @@ $("rows").addEventListener("click", (e) => {
 $("settingsBtn").addEventListener("click", () => {
   fillRows(printers);
   $("spoolmanUrl").value = spoolmanBase;
+  $("pwSet").hidden = !pwSettings;
   $("settings").showModal();
+  pwLoad();
 });
 $("addRow").addEventListener("click", () => {
   $("rows").insertAdjacentHTML("beforeend", rowHtml({ name: "", host: "", stream: "/webcam/?action=stream", screen: "", rotate: 0, flip: false, show: true }));
@@ -1607,7 +1970,8 @@ $("importFile").addEventListener("change", async (e) => {
   location.reload();
 });
 $("cancelSettings").addEventListener("click", () => $("settings").close());
-$("saveSettings").addEventListener("click", () => {
+$("saveSettings").addEventListener("click", async () => {
+  if (!(await pwSave())) return;
   printers = readRows();
   store.set("printers", printers);
   spoolmanBase = $("spoolmanUrl").value.trim();
@@ -1616,6 +1980,7 @@ $("saveSettings").addEventListener("click", () => {
   buildGrid();
   pollAll();
   refreshSpools();
+  fetchWatch();
 });
 
 // --- go ---------------------------------------------------------------

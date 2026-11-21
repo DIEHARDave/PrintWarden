@@ -25,7 +25,11 @@ any static web server, or straight from disk.
   TimelapseOffload (the author's timelapse and failure-detection container,
   not public), which has its own copy of this page, the page reads its Print Watch status from
   `api/status` and draws the failure and moved-part boxes over the live
-  video, with a score badge and a colored tile border. Served anywhere else,
+  video, with a score badge and a colored tile border. The tile header shows
+  the timelapse and detection modes (click the detection chip to change
+  it), a detection row shows the score history, part-position check,
+  **Not a failure**, activity and flagged frames, and **Printers…** gets the
+  server's detection, alert and timelapse settings. Served anywhere else,
   that request fails quietly and nothing changes.
 
 ## Setup
