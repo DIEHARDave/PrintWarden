@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Print Watch</title>
+<base href="../">
 <style>
 :root {
   --bg: #f4f5f7; --panel: #ffffff; --panel-2: #eef0f3; --text: #1b1e23; --muted: #626b78;
@@ -28,6 +29,8 @@ nav { display: flex; gap: 4px; }
 nav button { background: none; border: 0; color: var(--muted); font: inherit; padding: 6px 12px;
   border-radius: 6px; cursor: pointer; }
 nav button.on { background: var(--panel-2); color: var(--text); font-weight: 600; }
+#pmlink { color: var(--accent); text-decoration: none; font-size: 13px; }
+#pmlink:hover { text-decoration: underline; }
 #modelnote { margin-left: auto; color: var(--muted); font-size: 12px; }
 main { padding: 20px; max-width: 1500px; margin: 0 auto; }
 .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
@@ -114,6 +117,7 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 <header>
   <h1>Print Watch</h1>
   <nav><button id="tab-mon" class="on">Monitor</button><button id="tab-set">Settings</button></nav>
+  <a id="pmlink" href="./" title="Live cameras, screens, cards and spools, with these boxes drawn over the video">Printer Monitor</a>
   <span id="modelnote"></span>
   <label id="livebox" title="Show the printers' webcam streams instead of snapshots. Detection boxes are drawn from the latest checked frame."><input type="checkbox" id="live"> Live video</label>
 </header>

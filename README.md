@@ -76,7 +76,10 @@ Snapshots are fetched from the printer's web port (the `snapshot_url` in its web
 
 ## Web page
 
-`http://<docker host>:8095/` has two tabs:
+There are two pages:
+
+- `http://<docker host>:8095/` is [Printer Monitor](https://github.com/DIEHARDave/printer-monitor): every printer's live camera, remote screen, Mainsail-style card and spools. Here it also reads Print Watch's status and draws the failure boxes (yellow) and moved-part areas (red, dashed) from the last checked snapshot over the live video, with a badge for the score and the tile's border turning orange or red. **Detection** in its toolbar hides them; **Print Watch** opens the page below. Its printer list and layout are kept in the browser, per address: to carry them over from another copy of Printer Monitor, use **Printers… → Export…** there and **Import…** here. The page is a copy of the printer-monitor repo's `index.html` in `timelapse_offload/web/monitor.html`; copy it again to update.
+- `http://<docker host>:8095/watch/` is Print Watch, with two tabs:
 
 - **Monitor**: one card per printer with its camera (detection boxes drawn on it while printing), print progress, the failure score and its history, the part-position check, recent alerts and flagged frames. With **Live video** (top right, on by default, remembered per browser) the browser plays each printer's MJPEG stream straight from the printer (camera-streamer's WebRTC entry is swapped for its `stream.mjpg`), and the boxes from the latest checked snapshot are drawn over it, labelled with their age. Streams stop while the tab is hidden or on Settings; a camera without a stream falls back to snapshots. Each open page pulls one stream per printer, so keep it to a few viewers on weak printer boards.
 - **Settings**: add, find (scans a subnet for Moonraker on port 7125) or remove printers, and per printer choose the timelapse handling (render frames / copy videos / off) and detection (off / alert / alert + pause), webcam, sensitivity and moved-part watching (its sensitivity is under ⋯); plus the check interval and alert settings. Saving applies immediately, no restart, and writes `/data/settings.json`, which from then on replaces the `printers:` list in `config.yaml`. Delete that file to go back to `config.yaml`.

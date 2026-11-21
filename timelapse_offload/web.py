@@ -27,10 +27,25 @@ def _detector(request: web.Request):
     return det
 
 
-async def index(request: web.Request) -> web.Response:
-    html = resources.files(__package__).joinpath("web/index.html").read_text(encoding="utf-8")
+def _page(name: str) -> web.Response:
+    html = resources.files(__package__).joinpath(f"web/{name}").read_text(encoding="utf-8")
     return web.Response(text=html, content_type="text/html",
                         headers={"Cache-Control": "no-cache"})
+
+
+async def monitor(request: web.Request) -> web.Response:
+    """Printer Monitor (github.com/DIEHARDave/printer-monitor, copied into web/monitor.html):
+    live cameras, screens, cards and spools, with Print Watch's boxes drawn over the video."""
+    return _page("monitor.html")
+
+
+async def to_watch(request: web.Request) -> web.Response:
+    raise web.HTTPFound("/watch/")
+
+
+async def index(request: web.Request) -> web.Response:
+    """Print Watch: detection details and settings."""
+    return _page("index.html")
 
 
 async def status(request: web.Request) -> web.Response:
@@ -181,7 +196,9 @@ async def start(sup) -> web.AppRunner:
     app = web.Application()
     app["sup"] = sup
     app.add_routes([
-        web.get("/", index),
+        web.get("/", monitor),
+        web.get("/watch", to_watch),
+        web.get("/watch/", index),
         web.get("/api/status", status),
         web.get("/api/printers/{name}/snapshot.jpg", snapshot),
         web.post("/api/printers/{name}/ignore", ignore),
