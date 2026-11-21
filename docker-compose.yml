@@ -6,6 +6,8 @@ services:
     image: timelapse-offload:latest
     container_name: timelapse-offload
     restart: unless-stopped
+    ports:
+      - "8095:8095"   # monitor + settings page
     environment:
       TZ: ${TZ:-America/New_York}
     volumes:

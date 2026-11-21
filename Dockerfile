@@ -1,7 +1,7 @@
 FROM python:3.12-slim-bookworm
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg tzdata \
+    && apt-get install -y --no-install-recommends ffmpeg tzdata libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -14,6 +14,7 @@ RUN useradd --uid 1000 --create-home app \
     && chown app:app /work /data /output
 USER app
 
+EXPOSE 8095
 ENV PYTHONUNBUFFERED=1 TIMELAPSE_CONFIG=/config/config.yaml
 ENTRYPOINT ["python", "-m", "timelapse_offload"]
 CMD ["serve"]

@@ -1,6 +1,6 @@
 # TimelapseOffload
 
-Render 3D printer timelapses on a real computer instead of on the printer.
+Render 3D printer timelapses on a real computer instead of on the printer, and watch running prints for failures ("spaghetti") through the webcam.
 
 Printers running [moonraker-timelapse](https://github.com/mainsail-crew/moonraker-timelapse) (Zmod, Kiln OS, FLSUN_Timelapse, most Klipper setups) capture a frame per layer and then render the video on the printer's own slow CPU. TimelapseOffload runs in Docker on another machine. It watches each printer, downloads the frames as soon as a print finishes, renders them with ffmpeg and saves the video to a network share. The printer never renders and never stores videos.
 
@@ -46,6 +46,31 @@ By default each frame is its own HTTP request, about 1000 for a long print. With
 ## Sync mode (printers that render on-device)
 
 Some printers render timelapses themselves and never expose the raw frames — the Snapmaker U1, for example, renders on the printer and only publishes finished MP4s. There's nothing to offload, so a printer set to `mode: sync` is instead polled on an interval, and any new videos in its file root are copied to `<output>/<printer>/`. Set `delete_after_sync: true` to also remove them from the printer after a successful copy (off by default). See the U1 block in [config.example.yaml](config.example.yaml).
+
+## Failure detection
+
+While a printer is printing, TimelapseOffload grabs a webcam snapshot every 10 s (the printer's camera from Moonraker's webcam list) and runs [Obico](https://github.com/TheSpaghettiDetective/obico-server)'s open-source failure-detection model on it, on the CPU, inside the container. Scoring follows Obico's own algorithm: each frame's detections are summed, smoothed, and compared against a long-running baseline for that printer, so a printer whose camera always shows some clutter doesn't keep tripping it. The first 30 checks of each print (5 minutes) only learn what the print looks like.
+
+Set per printer (`detect:` in config, or on the web page):
+
+- `off`: no checks (the default).
+- `alert`: when the score crosses the warning level, then again at the failure level, send an alert.
+- `pause`: alert at the warning level, and at the failure level pause the print through Moonraker (`/printer/print/pause`). Pausing is never cancelling: resume it from Mainsail/Fluidd/the screen if it was a false alarm. After a resume the printer gets the 5-minute grace period again.
+
+Alerts go to a Discord webhook (`notify.discord_webhook`, with the snapshot attached) and, with `notify.console`, to the printer's console as a `RESPOND` message. The frame that triggered each alert or pause is kept in `/data/flagged/<printer>/` and shown on the page. On the page, **Not a failure** silences alerts for the rest of that print. `sensitivity` (default 1.0) scales the score: raise it to catch failures sooner, lower it if a printer gives false alarms.
+
+The model (~200 MB) is downloaded from obico.io into `/data/models` on first use and checked against its SHA-256. One check takes about 0.2 s of CPU on a desktop and somewhat more on a small VM; checks run one at a time across all printers. The model is licensed AGPL-3.0 by Obico and is not part of this repository.
+
+Snapshots are fetched from the printer's web port (the `snapshot_url` in its webcam config, relative URLs on port 80). Pick a different camera per printer with `webcam:`.
+
+## Web page
+
+`http://<docker host>:8095/` has two tabs:
+
+- **Monitor**: one card per printer with its latest camera image (detection boxes drawn on it while printing), print progress, the failure score and its history, recent alerts and flagged frames.
+- **Settings**: add, find (scans a subnet for Moonraker on port 7125) or remove printers, and per printer choose the timelapse handling (render frames / copy videos / off) and detection (off / alert / alert + pause), webcam and sensitivity; plus the check interval and alert settings. Saving applies immediately, no restart, and writes `/data/settings.json`, which from then on replaces the `printers:` list in `config.yaml`. Delete that file to go back to `config.yaml`.
+
+The page has no login; keep the port on your LAN, like Moonraker itself.
 
 ## Render on demand
 

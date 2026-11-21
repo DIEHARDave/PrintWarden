@@ -13,8 +13,10 @@ import aiohttp
 
 from . import render
 from .config import Config, Printer
+from .detect import Model, PredictionStore
 from .moonraker import (SAVED_FRAMES_SUFFIX, VIDEOS_ROOT, Moonraker, MoonrakerError,
                         extract_frames)
+from .monitor import Detector, Notifier
 
 RECONNECT_MIN, RECONNECT_MAX = 5, 300
 # How long to wait after a print completes for "Save Frames" to write its zip,
@@ -81,10 +83,16 @@ class Watcher:
         self.tasks: set[asyncio.Task] = set()
 
     async def run(self) -> None:
-        if self.printer.mode == "sync":
-            await self._run_sync()
-        else:
-            await self._run_frames()
+        try:
+            if self.printer.mode == "sync":
+                await self._run_sync()
+            else:
+                await self._run_frames()
+        finally:
+            # Stopped from the settings page: stop our renders too, so a
+            # replacement watcher doesn't render the same frames alongside.
+            for task in list(self.tasks):
+                task.cancel()
 
     async def _run_frames(self) -> None:
         delay = RECONNECT_MIN
@@ -402,12 +410,75 @@ def publish(src: Path, dest_dir: Path) -> Path:
     return dest
 
 
+class Supervisor:
+    """Runs a timelapse watcher and a failure detector per printer, and swaps them
+    when the printer list changes on the settings page."""
+
+    def __init__(self, cfg: Config, session: aiohttp.ClientSession):
+        self.cfg = cfg
+        self.session = session
+        self.state = State(cfg.state_file)
+        self.slots = asyncio.Semaphore(cfg.max_parallel_renders)
+        self.model = Model(cfg.detection.model_dir, cfg.detection.threads)
+        self.store = PredictionStore(cfg.state_file.with_name("detect_state.json"))
+        self.notifier = Notifier(cfg, session)
+        self.watchers: dict[str, tuple[Printer, asyncio.Task]] = {}
+        self.detectors: dict[str, tuple[Detector, asyncio.Task]] = {}
+        self._warming: asyncio.Task | None = None
+
+    def apply(self) -> None:
+        """Bring running tasks in line with cfg.printers."""
+        self.model.threads = self.cfg.detection.threads
+        wanted = {p.name: p for p in self.cfg.printers}
+        for name in list(self.watchers):
+            old, task = self.watchers[name]
+            new = wanted.get(name)
+            if new is None or new.mode == "off" or new.timelapse_key() != old.timelapse_key():
+                task.cancel()
+                del self.watchers[name]
+        for name in list(self.detectors):
+            det, task = self.detectors[name]
+            new = wanted.get(name)
+            if new is None or (new.host, new.port, new.api_key) != (
+                    det.printer.host, det.printer.port, det.printer.api_key):
+                task.cancel()
+                del self.detectors[name]
+            else:
+                det.printer = new          # detect/webcam/sensitivity apply live
+                det.mr.printer = new
+                det.cams_at = 0
+                det.wake.set()
+        for name, p in wanted.items():
+            if p.mode != "off" and name not in self.watchers:
+                w = Watcher(p, self.cfg, self.state, self.session, self.slots)
+                self.watchers[name] = (p, asyncio.create_task(w.run(), name=f"tl:{name}"))
+            if name not in self.detectors:
+                d = Detector(p, self.cfg, self.session, self.model, self.store, self.notifier)
+                self.detectors[name] = (d, asyncio.create_task(d.run(), name=f"det:{name}"))
+        if any(p.detect != "off" for p in self.cfg.printers) and self.model._session is None                 and (self._warming is None or self._warming.done()):
+            self._warming = asyncio.create_task(self.model.warm())
+        logging.getLogger("supervisor").info(
+            "running: timelapse %s; detection %s",
+            ", ".join(f"{n} ({p.mode})" for n, (p, _) in self.watchers.items()) or "none",
+            ", ".join(f"{n} ({d.printer.detect})" for n, (d, _) in self.detectors.items()
+                      if d.printer.detect != "off") or "none")
+
+    def detector(self, name: str) -> Detector | None:
+        found = self.detectors.get(name)
+        return found[0] if found else None
+
+
 async def serve(cfg: Config) -> None:
-    state = State(cfg.state_file)
-    slots = asyncio.Semaphore(cfg.max_parallel_renders)
+    from . import web
     async with aiohttp.ClientSession() as session:
-        watchers = [Watcher(p, cfg, state, session, slots) for p in cfg.printers]
-        await asyncio.gather(*(w.run() for w in watchers))
+        sup = Supervisor(cfg, session)
+        sup.apply()
+        runner = await web.start(sup) if cfg.web.enabled else None
+        try:
+            await asyncio.Event().wait()
+        finally:
+            if runner is not None:
+                await runner.cleanup()
 
 
 async def render_now(cfg: Config, name: str) -> Path | None:

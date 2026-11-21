@@ -4,6 +4,9 @@
 output_dir: /output/3D-Prints  # on the mounted NAS share; videos land in <output_dir>/<printer name>/
 work_dir: /work              # scratch space for frames while rendering
 state_file: /data/state.json # remembers which frame sets were rendered
+# Printers and detection/alert settings saved from the web page live here. Once it
+# exists, its printer list replaces the printers: list at the bottom of this file.
+settings_file: /data/settings.json
 
 # Turn moonraker-timelapse's on-printer render off on each printer at connect,
 # so the printer never spends time (or storage) making its own video.
@@ -36,9 +39,28 @@ ffmpeg:
   preset: medium # the PC has the CPU the printer lacks; slow/slower is fine too
   extra: []      # e.g. ["-tune", "film"]
 
+# Failure ("spaghetti") detection on webcam snapshots while printing. Turn it on
+# per printer with detect: alert | pause (or on the web page).
+detection:
+  interval: 10       # seconds between checks while printing (scoring is tuned for 10)
+  threads: 1         # CPU threads per check; checks run one at a time
+  # model_dir: /data/models     # the ~200 MB model is downloaded here on first use
+  # flagged_dir: /data/flagged  # frames that triggered an alert or pause
+
+notify:
+  discord_webhook: ""  # https://discord.com/api/webhooks/... ; alerts post the snapshot
+  console: true        # also show alerts in the printer console (RESPOND)
+
+web:
+  enabled: true
+  port: 8095         # monitor + settings page: http://<docker host>:8095/
+
 printers:
   - name: AD5X-1
     host: 10.0.1.198
+    detect: pause         # off (default) | alert | pause
+    # webcam: ""          # Moonraker webcam name; empty = first one with snapshots
+    # sensitivity: 1.0    # higher flags failures sooner (0.1..5)
   - name: AD5X-2
     host: 10.0.1.179
   - name: Creator5
@@ -51,6 +73,7 @@ printers:
     # zip_root: timelapse
   - name: T1
     host: 10.0.1.195
+  # mode: "off" skips timelapses for a printer (detection only).
   # port: 7125 and api_key: "" are the defaults; set api_key if the
   # printer doesn't trust the Docker host's address.
 

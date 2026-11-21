@@ -39,7 +39,14 @@ async def run_ffmpeg(binary: str, args: list[str]) -> None:
     proc = await asyncio.create_subprocess_exec(
         binary, "-hide_banner", "-loglevel", "error", "-y", *args,
         stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
-    _, stderr = await proc.communicate()
+    try:
+        _, stderr = await proc.communicate()
+    except asyncio.CancelledError:
+        # Printer removed/changed on the settings page mid-render: don't leave ffmpeg behind.
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
+        raise
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg exited {proc.returncode}: {stderr.decode(errors='replace')[-2000:]}")
 
