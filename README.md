@@ -37,8 +37,9 @@ any static web server, or straight from disk.
 
 1. Put `index.html` on a web server, for example nginx or
    `python -m http.server`, or just open the file.
-2. Click **Printers…** and enter each printer's host, camera stream path and
-   screen path. Set the Spoolman URL, or leave it empty to turn spools off.
+2. Click **Printers…** and enter each printer's host, then pick its camera
+   and screen from the lists (they come from the printer's Moonraker webcam
+   list, as set up in Mainsail; **Custom…** takes a typed path or URL). Set the Spoolman URL, or leave it empty to turn spools off.
    Settings are kept in your browser. **Export…** and **Import…** move them
    to another browser.
 

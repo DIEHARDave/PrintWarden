@@ -389,6 +389,12 @@
   #pwSet { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
   #pwSet[hidden] { display: none; }
   #pwSet h3 { margin: 14px 0 4px; font-size: 13px; }
+  /* Camera and screen pickers: the printer's own Moonraker webcam list,
+     or Custom… with a typed path or URL */
+  .row .pick { display: flex; gap: 4px; min-width: 0; }
+  .row .pick select { flex: 1 1 auto; min-width: 0; width: 100%; }
+  .row .pick input { flex: 1 1 55%; }
+  .row .pick input[hidden] { display: none; }
   /* Per-printer server settings, under each printer's row */
   .row .wsub {
     grid-column: 1 / -1;
@@ -485,7 +491,7 @@
 
 <dialog id="settings">
   <h2>Printers</h2>
-  <p>Leave Name empty to use the name set in the printer's Mainsail. Host is the printer's address. Stream is the camera's MJPEG path on that host, or a full URL. Screen is the remote screen page (Zmod and U1: /screen/); leave it empty if the printer has none. Changes are saved in this browser.</p>
+  <p>Leave Name empty to use the name set in the printer's Mainsail. Host is the printer's address. Camera and Screen list the cameras and screen pages set up in the printer's Mainsail (its Moonraker webcam list); pick Custom… to type a path on that host or a full URL instead. The camera picked here is also the one the server checks for failures. Changes are saved in this browser.</p>
   <div class="rows" id="rows"></div>
   <label class="spoolman-url">Spoolman <input type="text" id="spoolmanUrl" placeholder="http://10.0.1.206:7912 (empty = off)"></label>
   <section id="pwSet" hidden>
@@ -1657,7 +1663,6 @@ function wsubHtml(host) {
     <label class="won" title="Let the server render this printer's timelapses and watch its prints"><input type="checkbox" data-w="on"${w ? " checked" : ""}> Watch</label>
     <label>Timelapse<select data-w="mode">${pwOpts(PW_TL, p.mode)}</select></label>
     <label>Detection<select data-w="detect">${pwOpts(PW_DT, p.detect)}</select></label>
-    <label>Webcam<select data-w="webcam"><option value="">First camera</option>${p.webcam ? `<option selected value="${esc(p.webcam)}">${esc(p.webcam)}</option>` : ""}</select></label>
     <label title="Raise to catch failures sooner, lower if this printer gives false alarms">Sensitivity<input type="number" data-w="sensitivity" step="0.1" min="0.1" max="5" value="${esc(p.sensitivity)}"></label>
     <label>Moved parts<select data-w="motion">${pwOpts([["true", "Watch"], ["false", "Off"]], String(p.motion))}</select></label>
     <label>Moved sensitivity<input type="number" data-w="motion_sensitivity" step="0.1" min="0.1" max="5" value="${esc(p.motion_sensitivity)}"></label>
@@ -1684,23 +1689,79 @@ function attachWsubs() {
   $("rows").querySelectorAll("[data-row]").forEach((r) => {
     if (r.querySelector(".wsub")) return;
     r.insertAdjacentHTML("beforeend", wsubHtml(rowHost(r)));
-    pwFillCams(r);
   });
+  loadPicks();
 }
-async function pwFillCams(r) {
-  const sel = r.querySelector('.wsub select[data-w="webcam"]');
+// --- camera / screen pickers ---
+// Filled from the printer's Moonraker webcam list. Cameras give the MJPEG
+// stream this page shows (and the webcam name the server checks); iframe
+// entries are screen pages. A value that matches none stays as Custom….
+const camLists = {};   // host -> Promise of the webcam list
+function camStream(c) {
+  const url = c.stream_url || "";
+  if (/^webrtc-camerastreamer/.test(c.service || "") && /\/webrtc\/?$/.test(url)) return url.replace(/webrtc\/?$/, "stream.mjpg");
+  return ["mjpegstreamer", "mjpegstreamer-adaptive", "uv4l-mjpeg"].includes(c.service) ? url : "";
+}
+// Path on the printer, so "/webcam/x" and "http://<host>/webcam/x" compare equal
+function samePath(a, b, host) {
+  const n = (u) => (u || "").trim().replace(new RegExp(`^https?://${host.replace(/\./g, "\\.")}(:80)?(?=/)`, "i"), "").replace(/^(?!\/|https?:)/, "/");
+  return !!a && n(a) === n(b);
+}
+function getCams(host) {
+  if (!camLists[host]) {
+    camLists[host] = getJson(moonrakerUrl({ host }, "/server/webcams/list"), 4000)
+      .then((r) => (r.webcams || []).filter((c) => c.enabled !== false))
+      .catch(() => { delete camLists[host]; return null; });
+  }
+  return camLists[host];
+}
+function showPick(sel) {
+  const input = sel.nextElementSibling;
+  input.hidden = sel.value !== "__custom";
+}
+async function loadPick(r) {
   const host = rowHost(r);
-  if (!sel || !host) return;
-  const port = r.querySelector('.wsub [data-w="port"]').value || 7125;
-  try {
-    const res = await fetch(`api/webcams?host=${encodeURIComponent(host)}&port=${encodeURIComponent(port)}`);
-    if (!res.ok) return;
-    const names = await res.json();
-    const cur = sel.value;
-    sel.innerHTML = `<option value="">First camera${names[0] ? ` (${esc(names[0])})` : ""}</option>` +
-      [...new Set([...names, ...(cur ? [cur] : [])])].map((n) => `<option${n === cur ? " selected" : ""} value="${esc(n)}">${esc(n)}</option>`).join("");
-  } catch {}
+  if (!host || r.dataset.picked === host) return;
+  r.dataset.picked = host;
+  const cams = await getCams(host);
+  if (rowHost(r) !== host) return;
+  const camSel = r.querySelector('[data-pick="cam"]'), scrSel = r.querySelector('[data-pick="screen"]');
+  const stream = r.querySelector('[data-k="stream"]'), screen = r.querySelector('[data-k="screen"]');
+  if (!cams) {   // no Moonraker answer: typed values only
+    camSel.innerHTML = scrSel.innerHTML = '<option value="__custom">Custom…</option>';
+    showPick(camSel); showPick(scrSel);
+    return;
+  }
+  const videos = cams.filter((c) => c.service !== "iframe");
+  const pages = cams.filter((c) => c.service === "iframe");
+  // The camera whose stream this row already uses; a row still on the page's
+  // default guess takes the server's webcam, or else the first camera
+  let pick = videos.find((c) => camStream(c) && samePath(camStream(c), stream.value, host));
+  if (!pick && stream.value.trim() === "/webcam/?action=stream") {
+    const want = pwSettings?.printers.find((x) => x.host === host)?.webcam;
+    pick = videos.find((c) => camStream(c) && (want ? c.name === want : true));
+  }
+  camSel.innerHTML = videos.map((c) => `<option value="${esc(c.name)}" data-stream="${esc(camStream(c))}"${camStream(c) ? "" : " disabled"}${c === pick ? " selected" : ""}>${esc(c.name)}${camStream(c) ? "" : " (no MJPEG stream)"}</option>`).join("")
+    + `<option value="__custom"${pick ? "" : " selected"}>Custom…</option>`;
+  if (pick) stream.value = camStream(pick);
+  const page = pages.find((c) => samePath(c.stream_url, screen.value, host));
+  scrSel.innerHTML = `<option value=""${!screen.value.trim() ? " selected" : ""}>None</option>`
+    + pages.map((c) => `<option value="${esc(c.name)}" data-url="${esc(c.stream_url)}"${c === page ? " selected" : ""}>${esc(c.name)} (${esc(c.stream_url)})</option>`).join("")
+    + `<option value="__custom"${!page && screen.value.trim() ? " selected" : ""}>Custom…</option>`;
+  showPick(camSel); showPick(scrSel);
 }
+function loadPicks() { $("rows").querySelectorAll("[data-row]").forEach(loadPick); }
+$("rows").addEventListener("change", (e) => {
+  const sel = e.target.closest("[data-pick]");
+  if (sel) {
+    const input = sel.nextElementSibling, opt = sel.selectedOptions[0];
+    if (sel.dataset.pick === "cam" && opt.dataset.stream) input.value = opt.dataset.stream;
+    if (sel.dataset.pick === "screen") input.value = sel.value === "" ? "" : opt.dataset.url ?? input.value;
+    showPick(sel);
+    if (sel.value === "__custom") input.focus();
+  }
+  if (e.target.dataset.k === "host") loadPick(e.target.closest("[data-row]"));
+});
 function pwHookShow() {
   const set = pwSettings.notify.discord_webhook_set && !pwHookClear;
   $("pwWebhook").value = "";
@@ -1749,6 +1810,8 @@ function pwReadPrinters() {
       if (k === "motion" || k === "delete_after_sync") v = v === "true";
       p[k] = v;
     });
+    const cam = r.querySelector('[data-pick="cam"]').value;
+    if (cam !== "__custom") p.webcam = cam;
     let name = p.name || r.querySelector('[data-k="name"]').value.trim()
       || tiles.find((t) => t.p.host === host)?.mainsailName || host;
     name = name.replace(/[^A-Za-z0-9 ._-]/g, "-").slice(0, 40);
@@ -1766,10 +1829,6 @@ $("rows").addEventListener("click", (e) => {
 $("rows").addEventListener("change", (e) => {
   const sub = e.target.closest(".wsub");
   if (sub && e.target.dataset.w === "on") sub.classList.toggle("off", !e.target.checked);
-  if (e.target.dataset.k === "host" || e.target.dataset.w === "port") {
-    const r = e.target.closest("[data-row]");
-    if (r) pwFillCams(r);
-  }
 });
 $("pwScan").addEventListener("click", async () => {
   const btn = $("pwScan");
@@ -1792,6 +1851,7 @@ $("pwFound").addEventListener("click", (e) => {
   if (!b) return;
   $("rows").insertAdjacentHTML("beforeend", rowHtml({ name: "", host: b.dataset.addhost, stream: "/webcam/?action=stream", screen: "", rotate: 0, flip: false, show: true }));
   attachWsubs();
+  loadPicks();
   const sub = $("rows").lastElementChild.querySelector(".wsub");
   if (sub) { sub.querySelector('[data-w="on"]').checked = true; sub.classList.remove("off"); }
   b.replaceWith(Object.assign(document.createElement("span"), { textContent: "added below" }));
@@ -1880,8 +1940,8 @@ function rowHtml(p) {
       <input type="checkbox" data-k="show" ${p.show === false ? "" : "checked"} title="Show">
       <input type="text" data-k="name" value="${esc(p.name)}" placeholder="${esc(mainsailNameFor(p.host) || "From Mainsail")}">
       <input type="text" data-k="host" value="${esc(p.host)}" placeholder="10.0.1.x">
-      <input type="text" data-k="stream" value="${esc(p.stream)}" placeholder="/webcam/?action=stream" class="wide">
-      <input type="text" data-k="screen" value="${esc(p.screen || "")}" placeholder="none" class="wide">
+      <span class="wide pick"><select data-pick="cam" title="Camera from the printer's webcam list"><option value="__custom">Custom…</option></select><input type="text" data-k="stream" value="${esc(p.stream)}" placeholder="/webcam/?action=stream"></span>
+      <span class="wide pick"><select data-pick="screen" title="Screen page from the printer's webcam list"><option value="__custom">Custom…</option></select><input type="text" data-k="screen" value="${esc(p.screen || "")}" placeholder="none"></span>
       <select data-k="logoBg" class="wide" title="Box behind the logo">
         ${[["auto", "Auto"], ["light", "Light"], ["dark", "Dark"], ["none", "None"]].map(([v, l]) => `<option value="${v}" ${(p.logoBg || "auto") === v ? "selected" : ""}>${l}</option>`).join("")}
       </select>
@@ -1894,8 +1954,9 @@ function rowHtml(p) {
 }
 function fillRows(list) {
   $("rows").innerHTML =
-    `<div class="row headings"><span>Order</span><span></span><span>Name</span><span>Host</span><span class="wide">Camera stream</span><span class="wide">Screen</span><span class="wide">Logo box</span><span class="wide">Rotate</span><span class="wide"></span><span></span></div>` +
+    `<div class="row headings"><span>Order</span><span></span><span>Name</span><span>Host</span><span class="wide">Camera</span><span class="wide">Screen</span><span class="wide">Logo box</span><span class="wide">Rotate</span><span class="wide"></span><span></span></div>` +
     list.map(rowHtml).join("");
+  loadPicks();
 }
 function readRows() {
   return [...$("rows").querySelectorAll("[data-row]")].map((r) => {
@@ -1977,6 +2038,7 @@ $("settingsBtn").addEventListener("click", () => {
 $("addRow").addEventListener("click", () => {
   $("rows").insertAdjacentHTML("beforeend", rowHtml({ name: "", host: "", stream: "/webcam/?action=stream", screen: "", rotate: 0, flip: false, show: true }));
   attachWsubs();
+  loadPicks();
 });
 $("resetRows").addEventListener("click", () => { fillRows(DEFAULT_PRINTERS); attachWsubs(); });
 // Settings are per origin, so export/import is how they move between browsers or hosts
