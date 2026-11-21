@@ -138,6 +138,32 @@ async def put_settings(request: web.Request) -> web.Response:
     return web.json_response(config.settings_dict(sup.cfg))
 
 
+async def set_detect(request: web.Request) -> web.Response:
+    """Change one printer's detection mode (the chip on Printer Monitor's tiles)."""
+    sup = request.app["sup"]
+    name = request.match_info["name"]
+    try:
+        detect = str((await request.json()).get("detect", ""))
+    except ValueError:
+        detect = ""
+    if detect not in ("off", "alert", "pause"):
+        return web.json_response({"error": "detect must be off, alert or pause"}, status=400)
+    data = config.settings_dict(sup.cfg)
+    for p in data["printers"]:
+        if p["name"] == name:
+            p["detect"] = detect
+            break
+    else:
+        raise web.HTTPNotFound(text="no such printer")
+    try:
+        config.save_settings(sup.cfg, data)
+    except (ValueError, TypeError) as e:
+        return web.json_response({"error": str(e)}, status=400)
+    sup.apply()
+    log.info("%s: detection set to %s from the web page", name, detect)
+    return web.json_response({"ok": True, "detect": detect})
+
+
 async def probe(session: aiohttp.ClientSession, host: str, port: int) -> dict | None:
     try:
         async with session.get(f"http://{host}:{port}/printer/info",
@@ -202,6 +228,7 @@ async def start(sup) -> web.AppRunner:
         web.get("/api/status", status),
         web.get("/api/printers/{name}/snapshot.jpg", snapshot),
         web.post("/api/printers/{name}/ignore", ignore),
+        web.post("/api/printers/{name}/detect", set_detect),
         web.get("/api/webcams", webcams),
         web.get("/api/printers/{name}/flagged/{file}", flagged),
         web.get("/api/settings", get_settings),
