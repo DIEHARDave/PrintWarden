@@ -147,12 +147,33 @@
     position: absolute; inset: 0; width: 100%; height: 100%;
     z-index: 1; pointer-events: none; overflow: hidden;
   }
+  /* Bottom of the camera: the detection badge, and under it the Activity
+     list, which opens upward over the picture */
+  .video .vfoot {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+    padding: 5px; pointer-events: none; cursor: auto;
+  }
+  .video .vfoot > * { pointer-events: auto; }
+  .video .wactov {
+    align-self: stretch;
+    background: rgba(0, 0, 0, .72); color: #e6e6e6; border-radius: 5px;
+    font-size: 11.5px; padding: 2px 8px;
+  }
+  .video .wactov[hidden], .no-boxes .video .wactov { display: none; }
+  .video .wactov summary { cursor: pointer; color: #cfd3d8; line-height: 18px; }
+  .video .wactov[open], .video .wactov details[open] { padding-bottom: 4px; }
+  .video .wactov .wbody { max-height: calc(var(--tile-w, 360px) * 0.42); overflow: auto; }
+  .video .wactov .events { list-style: none; padding: 0; margin: 3px 0 0; display: grid; gap: 1px; color: #b9bec6; }
+  .video .wactov .events b { color: #fff; font-weight: 500; }
+  .video .wactov .thumbs { display: flex; gap: 5px; overflow-x: auto; margin-top: 5px; }
+  .video .wactov .thumbs img { height: 48px; border-radius: 3px; display: block; }
   .video .wbadge {
-    position: absolute; left: 5px; bottom: 5px; z-index: 2;
+    max-width: 100%;
     padding: 1px 7px; border-radius: 4px;
     background: rgba(0, 0, 0, .62); color: #fff;
     font-size: 11px; text-decoration: none; white-space: nowrap;
-    max-width: calc(100% - 10px); overflow: hidden; text-overflow: ellipsis;
+    overflow: hidden; text-overflow: ellipsis;
   }
   .video .wbadge:hover { outline: 1px solid var(--accent); }
   .video .wbadge.warning { background: rgba(208, 138, 18, .9); }
@@ -872,7 +893,7 @@ function buildGrid() {
         <span class="temps"></span>
         <span class="wchips"></span>
       </div>
-      <div class="video"><img class="cam" alt=""><img class="logo" alt="" hidden><svg class="ov" aria-hidden="true"></svg><a class="wbadge" href="watch/" target="_blank" rel="noopener" hidden></a><div class="msg">Connecting…</div></div>
+      <div class="video"><img class="cam" alt=""><img class="logo" alt="" hidden><svg class="ov" aria-hidden="true"></svg><div class="vfoot"><a class="wbadge" href="watch/" target="_blank" rel="noopener" hidden></a><div class="wactov" hidden></div></div><div class="msg">Connecting…</div></div>
       <div class="progress"><div></div></div>
       <div class="file"></div>
       ${p.screen
@@ -912,6 +933,7 @@ function buildGrid() {
       wbadge: el.querySelector(".wbadge"),
       wchips: el.querySelector(".wchips"),
       wrow: el.querySelector(".wrow"),
+      wactov: el.querySelector(".wactov"),
       wOpen: false,      // detection row's Activity list left open
       watch: null,       // this printer's Print Watch status, when served alongside
       frame: el.querySelector(".screen iframe"),
@@ -944,12 +966,14 @@ function buildGrid() {
       t.retry = setTimeout(() => startStream(t), RETRY_MS);
     });
     el.querySelector(".video").addEventListener("click", () => openZoom(t));
-    t.wbadge.addEventListener("click", (e) => e.stopPropagation());
+    // Clicks on the badge or the Activity list must not open the enlarged view
+    el.querySelector(".vfoot").addEventListener("click", (e) => { if (e.target !== e.currentTarget) e.stopPropagation(); });
+    t.wactov.addEventListener("toggle", (e) => { t.wOpen = e.target.open; }, true);
     t.wchips.addEventListener("click", (e) => {
       if (e.target.closest("button.wchip")) cycleDetect(t, e.target.closest("button.wchip"));
     });
     t.wrow.addEventListener("click", (e) => { if (e.target.closest(".wignore")) notFailure(t); });
-    t.wrow.addEventListener("toggle", (e) => { t.wOpen = e.target.open; }, true);
+
     tiles.push(t);
   });
   startAll();
@@ -1581,7 +1605,7 @@ const MOTION_TEXT = { learning: ["Learning the scene", "text"], ok: ["Not moved"
   candidate: ["Changed, checking it stays", "warn"], moved: ["Moved or came loose", "err"] };
 function renderRow(t) {
   const w = t.watch;
-  if (!w) { t.wrow.hidden = true; t.wrow.innerHTML = ""; return; }
+  if (!w) { t.wrow.hidden = true; t.wrow.innerHTML = ""; t.wactov.hidden = true; t.wactov.innerHTML = ""; return; }
   const watching = w.detect !== "off" && (w.state === "printing" || w.state === "paused");
   const parts = [];
   if (watching) {
@@ -1600,15 +1624,22 @@ function renderRow(t) {
     else parts.push('<div class="wact"><button type="button" class="wignore" title="Stop alerts for the rest of this print">Not a failure</button></div>');
   }
   if (w.error) parts.push(`<div class="werr">${esc(w.error)}</div>`);
-  const flagged = w.flagged || [];
-  if ((w.events || []).length || flagged.length) {
-    const url = (f) => `api/printers/${encodeURIComponent(w.name)}/flagged/${encodeURIComponent(f)}`;
-    parts.push(`<details${t.wOpen ? " open" : ""}><summary>Activity${flagged.length ? ` · ${flagged.length} flagged frame${flagged.length > 1 ? "s" : ""}` : ""}</summary>
-      <ul class="events">${(w.events || []).slice(0, 8).map((e) => `<li>${new Date(e.t * 1000).toLocaleTimeString()} <b>${esc(e.text)}</b></li>`).join("")}</ul>
-      ${flagged.length ? `<div class="thumbs">${flagged.map((f) => `<a href="${url(f)}" target="_blank" rel="noopener" title="${esc(f)}"><img loading="lazy" src="${url(f)}" alt=""></a>`).join("")}</div>` : ""}</details>`);
-  }
   t.wrow.hidden = !parts.length;
   t.wrow.innerHTML = parts.join("");
+
+  // Activity sits on the bottom of the camera and opens over it
+  const flagged = w.flagged || [], events = w.events || [];
+  if (events.length || flagged.length) {
+    const url = (f) => `api/printers/${encodeURIComponent(w.name)}/flagged/${encodeURIComponent(f)}`;
+    const html = `<details${t.wOpen ? " open" : ""}><summary>Activity${flagged.length ? ` · ${flagged.length} flagged frame${flagged.length > 1 ? "s" : ""}` : ""}</summary>
+      <div class="wbody"><ul class="events">${events.slice(0, 8).map((e) => `<li>${new Date(e.t * 1000).toLocaleTimeString()} <b>${esc(e.text)}</b></li>`).join("")}</ul>
+      ${flagged.length ? `<div class="thumbs">${flagged.map((f) => `<a href="${url(f)}" target="_blank" rel="noopener" title="${esc(f)}"><img loading="lazy" src="${url(f)}" alt=""></a>`).join("")}</div>` : ""}</div></details>`;
+    // Only rewrite when it changed, so an open list keeps its scroll position
+    if (t.wactov.dataset.html !== html) { t.wactov.innerHTML = html; t.wactov.dataset.html = html; }
+    t.wactov.hidden = false;
+  } else {
+    t.wactov.hidden = true; t.wactov.innerHTML = ""; t.wactov.dataset.html = "";
+  }
 }
 
 let watchMeta = null;   // { interval, model_ready, model_error }
