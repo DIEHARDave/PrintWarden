@@ -121,9 +121,17 @@ async def flagged(request: web.Request) -> web.Response:
     return web.FileResponse(path)
 
 
+def public_settings(cfg) -> dict:
+    """Settings for the page. The Discord webhook URL never goes back to a browser,
+    only whether one is set: anyone who can see the screen could use it. A save that
+    leaves discord_webhook out keeps the saved one; an empty string removes it."""
+    data = config.settings_dict(cfg)
+    data["notify"]["discord_webhook_set"] = bool(data["notify"].pop("discord_webhook", ""))
+    return data
+
+
 async def get_settings(request: web.Request) -> web.Response:
-    cfg = request.app["sup"].cfg
-    return web.json_response(config.settings_dict(cfg))
+    return web.json_response(public_settings(request.app["sup"].cfg))
 
 
 async def put_settings(request: web.Request) -> web.Response:
@@ -135,7 +143,7 @@ async def put_settings(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=400)
     sup.apply()
     log.info("settings saved from the web page")
-    return web.json_response(config.settings_dict(sup.cfg))
+    return web.json_response(public_settings(sup.cfg))
 
 
 async def set_detect(request: web.Request) -> web.Response:

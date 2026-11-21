@@ -146,7 +146,7 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
         <label class="f">CPU threads per check
           <input id="threads" type="number" min="1" max="8" step="1"></label>
         <label class="f">Discord webhook URL
-          <input id="webhook" placeholder="https://discord.com/api/webhooks/..."></label>
+          <input id="webhook" type="password" autocomplete="off" placeholder="https://discord.com/api/webhooks/..."></label>
         <label class="f">Printer console message
           <select id="console"><option value="1">On</option><option value="0">Off</option></select></label>
       </div>
@@ -420,7 +420,8 @@ function drawSettings() {
     : '<p class="muted">No printers. Add one or use Find printers.</p>';
   $("#interval").value = settings.detection.interval;
   $("#threads").value = settings.detection.threads;
-  $("#webhook").value = settings.notify.discord_webhook;
+  $("#webhook").value = "";
+  $("#webhook").placeholder = settings.notify.discord_webhook_set ? "Saved (hidden). Paste a new URL to replace it" : "https://discord.com/api/webhooks/...";
   $("#console").value = settings.notify.console ? "1" : "0";
   if (!$("#subnet").value) {
     const h = settings.printers.find(p => /^\d+\.\d+\.\d+\.\d+$/.test(p.host));
@@ -502,7 +503,8 @@ for (const id of ["interval", "threads", "webhook", "console"]) $("#" + id).addE
 $("#revert").onclick = loadSettings;
 $("#save").onclick = async () => {
   settings.detection = { interval: Number($("#interval").value), threads: Number($("#threads").value) };
-  settings.notify = { discord_webhook: $("#webhook").value.trim(), console: $("#console").value === "1" };
+  settings.notify = { console: $("#console").value === "1" };
+  if ($("#webhook").value.trim()) settings.notify.discord_webhook = $("#webhook").value.trim();
   const msg = $("#savemsg");
   try {
     const r = await fetch("api/settings", { method: "PUT", headers: { "Content-Type": "application/json" },
