@@ -10,7 +10,7 @@ from importlib import resources
 import aiohttp
 from aiohttp import web
 
-from . import config
+from . import config, training
 from .detect import Snapshot
 from .moonraker import MoonrakerError
 
@@ -41,6 +41,15 @@ async def monitor(request: web.Request) -> web.Response:
 
 async def to_watch(request: web.Request) -> web.Response:
     raise web.HTTPFound("/watch/")
+
+
+async def to_label(request: web.Request) -> web.Response:
+    raise web.HTTPFound("/label/" + (f"?{request.query_string}" if request.query_string else ""))
+
+
+async def label_page(request: web.Request) -> web.Response:
+    """Mark a camera frame: draw boxes round problems and pick their type."""
+    return _page("label.html")
 
 
 async def index(request: web.Request) -> web.Response:
@@ -243,6 +252,9 @@ async def start(sup) -> web.AppRunner:
         web.put("/api/settings", put_settings),
         web.post("/api/scan", scan),
         web.post("/api/test-notify", test_notify),
+        web.get("/label", to_label),
+        web.get("/label/", label_page),
+        *training.routes(),
     ])
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
