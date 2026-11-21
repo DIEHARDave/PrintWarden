@@ -21,6 +21,12 @@ any static web server, or straight from disk.
 - **Spoolman location sync** (optional): sets each loaded spool's Spoolman
   location to `<printer> <lane>` and clears locations that are out of date.
   A spool claimed by two printers is flagged and skipped.
+- **Failure-detection overlay** (optional): served by
+  TimelapseOffload (the author's timelapse and failure-detection container,
+  not public), which has its own copy of this page, the page reads its Print Watch status from
+  `api/status` and draws the failure and moved-part boxes over the live
+  video, with a score badge and a colored tile border. Served anywhere else,
+  that request fails quietly and nothing changes.
 
 ## Setup
 

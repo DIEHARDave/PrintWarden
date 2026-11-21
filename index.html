@@ -141,6 +141,31 @@
   .video .logo.bg-dark { background: rgba(0, 0, 0, .55); }
   .video .logo.bg-none { padding: 0; background: none; }
   .video .logo[hidden], .no-logos .video .logo { display: none; }
+  /* Print Watch detection overlay: boxes from its last checked snapshot,
+     drawn in snapshot pixels and transformed like the camera image */
+  .video svg.ov {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    z-index: 1; pointer-events: none; overflow: hidden;
+  }
+  .video .wbadge {
+    position: absolute; left: 5px; bottom: 5px; z-index: 2;
+    padding: 1px 7px; border-radius: 4px;
+    background: rgba(0, 0, 0, .62); color: #fff;
+    font-size: 11px; text-decoration: none; white-space: nowrap;
+    max-width: calc(100% - 10px); overflow: hidden; text-overflow: ellipsis;
+  }
+  .video .wbadge:hover { outline: 1px solid var(--accent); }
+  .video .wbadge.warning { background: rgba(208, 138, 18, .9); }
+  .video .wbadge.failing { background: rgba(210, 63, 63, .92); }
+  .video .wbadge[hidden], .no-boxes .video svg.ov, .no-boxes .video .wbadge { display: none; }
+  .tile.watch-warning { border-color: var(--warn); }
+  .tile.watch-failing { border-color: var(--err); box-shadow: 0 0 0 1px var(--err); }
+  .bar a.wlink {
+    color: var(--text); text-decoration: none;
+    border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px;
+  }
+  .bar a.wlink:hover { border-color: var(--accent); }
+  .bar a.wlink[hidden], .bar label[hidden] { display: none; }
   .video .msg {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
@@ -372,7 +397,9 @@
       <option value="inline">Inline</option>
     </select>
   </label>
+  <label id="boxesLbl" hidden title="Failure and moved-part boxes from Print Watch, drawn over the video"><input id="boxes" type="checkbox"> Detection</label>
   <span class="spacer"></span>
+  <a class="wlink" id="watchLink" href="watch/" hidden title="Detection details, alert history and settings">Print Watch</a>
   <button id="settingsBtn" type="button">Printers…</button>
 </div>
 
@@ -486,7 +513,7 @@ let printers = store.get("printers", null) || structuredClone(DEFAULT_PRINTERS);
   if (migrated) store.set("printers", printers);
 }
 const view = Object.assign(
-  { size: 360, gap: 6, ar: "4 / 3", fit: "contain", compact: false, screens: true, touch: false, logos: true, cards: true, spools: true, rowOrder: "cam,screen,card" },
+  { size: 360, gap: 6, ar: "4 / 3", fit: "contain", compact: false, screens: true, touch: false, logos: true, cards: true, spools: true, boxes: true, rowOrder: "cam,screen,card" },
   store.get("view", {})
 );
 let spoolmanBase = store.get("spoolman", DEFAULT_SPOOLMAN);
@@ -626,6 +653,9 @@ function applyView() {
   document.body.classList.toggle("no-spools", !view.spools);
   if (spoolsChanged && view.spools) refreshSpools();
   $("spools").checked = view.spools;
+  document.body.classList.toggle("no-boxes", !view.boxes);
+  $("boxes").checked = view.boxes;
+  tiles.forEach((t) => renderWatch(t));
   // Even numbers, so the spools row can follow the card at card + 1
   view.rowOrder.split(",").forEach((row, i) => root.setProperty("--o-" + row, (i + 1) * 2));
   root.setProperty("--o-spools", (view.rowOrder.split(",").indexOf("card") + 1) * 2 + 1);
@@ -714,6 +744,7 @@ $("logos").addEventListener("change", (e) => { view.logos = e.target.checked; ap
 $("touch").addEventListener("change", (e) => { view.touch = e.target.value === "inline"; applyView(); });
 $("cards").addEventListener("change", (e) => { view.cards = e.target.checked; applyView(); });
 $("spools").addEventListener("change", (e) => { view.spools = e.target.checked; applyView(); });
+$("boxes").addEventListener("change", (e) => { view.boxes = e.target.checked; applyView(); });
 $("rowOrder").addEventListener("change", (e) => { view.rowOrder = e.target.value; applyView(); });
 
 // --- tiles ------------------------------------------------------------
@@ -734,7 +765,7 @@ function buildGrid() {
         <span class="state">…</span>
         <span class="temps"></span>
       </div>
-      <div class="video"><img class="cam" alt=""><img class="logo" alt="" hidden><div class="msg">Connecting…</div></div>
+      <div class="video"><img class="cam" alt=""><img class="logo" alt="" hidden><svg class="ov" aria-hidden="true"></svg><a class="wbadge" href="watch/" target="_blank" rel="noopener" hidden></a><div class="msg">Connecting…</div></div>
       <div class="progress"><div></div></div>
       <div class="file"></div>
       ${p.screen
@@ -769,6 +800,9 @@ function buildGrid() {
       heaters: null,     // extruder / chamber objects this printer has
       mainsailName: "",
       msg: el.querySelector(".msg"),
+      ov: el.querySelector("svg.ov"),
+      wbadge: el.querySelector(".wbadge"),
+      watch: null,       // this printer's Print Watch status, when served alongside
       frame: el.querySelector(".screen iframe"),
       retry: null,
       lanesEl: el.querySelector(".spools .lanes"),
@@ -789,6 +823,7 @@ function buildGrid() {
     setName(t);
     loadMainsailMeta(t);
     t.img.style.transform = imgTransform(p);
+    t.ov.style.transform = imgTransform(p);
     t.img.addEventListener("load", () => { t.msg.style.display = "none"; });
     t.img.addEventListener("error", () => {
       t.msg.textContent = "No video, retrying…";
@@ -798,6 +833,7 @@ function buildGrid() {
       t.retry = setTimeout(() => startStream(t), RETRY_MS);
     });
     el.querySelector(".video").addEventListener("click", () => openZoom(t));
+    t.wbadge.addEventListener("click", (e) => e.stopPropagation());
     tiles.push(t);
   });
   startAll();
@@ -1329,6 +1365,80 @@ async function syncSpools(t) {
   setTimeout(() => { t.syncMsg = ""; renderSpools(t); }, 8000);
 }
 
+// --- Print Watch overlay ----------------------------------------------
+// When this page is served by TimelapseOffload, its Print Watch status
+// (api/status next to this page) carries each printer's last checked
+// snapshot: failure boxes, moved-part cells, score and level. They are drawn
+// over the live video. Served anywhere else the request fails and the page
+// looks the same as before (it checks again every minute).
+const WATCH_API = "api/status";
+const WATCH_INTERVAL_MS = 5000;
+const WATCH_LEVEL = { ok: "Looks fine", warming: "Learning", warning: "Possible failure", failing: "Likely failure" };
+let watchOn = false;
+
+function watchAgo(t) {
+  const s = Math.max(0, Math.round(Date.now() / 1000 - t));
+  return s < 60 ? s + "s" : Math.round(s / 60) + "m";
+}
+function renderWatch(t) {
+  const w = t.watch;
+  const watching = !!w && w.detect !== "off" && (w.state === "printing" || w.state === "paused");
+  const snap = watching ? w.snapshot : null;
+  const moved = w?.motion?.state === "moved";
+  const level = !watching || w.ignored ? "" : moved ? "failing" : w.level;
+  t.el.classList.toggle("watch-warning", level === "warning");
+  t.el.classList.toggle("watch-failing", level === "failing");
+  if (!watching) { t.ov.innerHTML = ""; t.wbadge.hidden = true; return; }
+
+  const fail = snap?.boxes || [], cells = w.motion?.cells || [];
+  if (snap && snap.size?.[0]) {
+    const [sw, sh] = snap.size;
+    t.ov.setAttribute("viewBox", `0 0 ${sw} ${sh}`);
+    t.ov.setAttribute("preserveAspectRatio", view.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet");
+    t.ov.innerHTML = fail.map((b) =>
+      `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#ffd23f" stroke-width="2" vector-effect="non-scaling-stroke"><title>Failure ${Math.round(b.conf * 100)}%</title></rect>`).concat(
+      cells.map(([x, y, bw, bh]) =>
+      `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="rgba(255,80,80,.14)" stroke="#ff5050" stroke-dasharray="5 4" stroke-width="2" vector-effect="non-scaling-stroke"><title>Changed since a few minutes ago</title></rect>`)).join("");
+  } else {
+    t.ov.innerHTML = "";
+  }
+
+  let text;
+  if (w.ignored) text = "Watch: not a failure";
+  else if (moved) text = "Part moved or came loose";
+  else if (!w.frames) text = w.state === "paused" ? "Watch: paused" : "Watch: starting";
+  else if (w.level === "warming") text = `Watch: learning ${w.frames}/${w.safe_frames}`;
+  else text = `${WATCH_LEVEL[w.level] || w.level} · ${Math.round((w.score || 0) * 100)}%`;
+  if (!moved && w.motion?.state === "candidate") text += " · part changed?";
+  t.wbadge.textContent = text;
+  t.wbadge.className = "wbadge " + level;
+  t.wbadge.title = (fail.length || cells.length ? `Boxes from the snapshot checked ${watchAgo(snap.t)} ago. ` : "")
+    + "Open Print Watch for details.";
+  t.wbadge.hidden = false;
+}
+async function pollWatch() {
+  let next = WATCH_INTERVAL_MS;
+  if (!document.hidden) {
+    try {
+      const res = await fetch(WATCH_API, { cache: "no-store" });
+      const data = res.ok ? await res.json() : null;
+      if (!Array.isArray(data?.printers)) throw new Error("no Print Watch here");
+      watchOn = true;
+      tiles.forEach((t) => {
+        t.watch = data.printers.find((w) => w.host === t.p.host) || null;
+        renderWatch(t);
+      });
+    } catch {
+      if (watchOn) tiles.forEach((t) => { t.watch = null; renderWatch(t); });
+      watchOn = false;
+      next = 60000;
+    }
+    $("watchLink").hidden = !watchOn;
+    $("boxesLbl").hidden = !watchOn;
+  }
+  setTimeout(pollWatch, next);
+}
+
 // --- enlarged view ----------------------------------------------------
 function openZoom(t) {
   $("zoomCap").textContent = displayName(t);
@@ -1513,6 +1623,7 @@ buildGrid();
 applyView();
 pollAll();
 refreshSpools();
+pollWatch();
 </script>
 </body>
 </html>
