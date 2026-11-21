@@ -59,6 +59,17 @@ Set per printer (`detect:` in config, or on the web page):
 
 Alerts go to a Discord webhook (`notify.discord_webhook`, with the snapshot attached) and, with `notify.console`, to the printer's console as a `RESPOND` message. The frame that triggered each alert or pause is kept in `/data/flagged/<printer>/` and shown on the page. On the page, **Not a failure** silences alerts for the rest of that print. `sensitivity` (default 1.0) scales the score: raise it to catch failures sooner, lower it if a printer gives false alarms.
 
+### Moved or loosened parts
+
+The model only knows what loose strands look like. A part that came off the bed, tipped over or was pushed aside still looks like a clean part, so it scores nothing until spaghetti piles up. A second check watches for that, on the same snapshots and with the same `detect:` action (alert, or alert + pause):
+
+- It compares the median of the last 2 minutes of snapshots with the median of the 2 minutes before. The median removes the moving toolhead; spots the toolhead kept passing over are left out rather than guessed at.
+- Small shifts are tolerated, so the bed lowering, a delta effector rising and new layers growing do not count. A change of light or a bumped camera (most of the picture at once) is skipped.
+- A change must cover more than about 1.2% of the picture (scaled by `motion_sensitivity`) and is then only a candidate. It's confirmed once it is still there in frames where the toolhead, read from Klipper, is at least 40 mm from where it was when the change appeared, so a toolhead that sat in one place for a few minutes is not taken for a new object. A move is usually reported 2 to 4 minutes after it happened.
+- The alert carries the current snapshot and one from a few minutes earlier (both kept in `/data/flagged/`), and the page outlines the changed area in red.
+
+Per printer: `motion: true|false` (on by default when `detect` is not off) and `motion_sensitivity` (default 1.0; higher catches smaller changes). It cannot see what the toolhead keeps covering, and a slow drift over many minutes is not caught. The first 4 minutes of each print, and the first 4 minutes after a resume, only learn the scene.
+
 The model (~200 MB) is downloaded from obico.io into `/data/models` on first use and checked against its SHA-256. One check takes about 0.2 s of CPU on a desktop and somewhat more on a small VM; checks run one at a time across all printers. The model is licensed AGPL-3.0 by Obico and is not part of this repository.
 
 Snapshots are fetched from the printer's web port (the `snapshot_url` in its webcam config, relative URLs on port 80). Pick a different camera per printer with `webcam:`.
@@ -67,8 +78,8 @@ Snapshots are fetched from the printer's web port (the `snapshot_url` in its web
 
 `http://<docker host>:8095/` has two tabs:
 
-- **Monitor**: one card per printer with its latest camera image (detection boxes drawn on it while printing), print progress, the failure score and its history, recent alerts and flagged frames.
-- **Settings**: add, find (scans a subnet for Moonraker on port 7125) or remove printers, and per printer choose the timelapse handling (render frames / copy videos / off) and detection (off / alert / alert + pause), webcam and sensitivity; plus the check interval and alert settings. Saving applies immediately, no restart, and writes `/data/settings.json`, which from then on replaces the `printers:` list in `config.yaml`. Delete that file to go back to `config.yaml`.
+- **Monitor**: one card per printer with its latest camera image (detection boxes drawn on it while printing), print progress, the failure score and its history, the part-position check, recent alerts and flagged frames.
+- **Settings**: add, find (scans a subnet for Moonraker on port 7125) or remove printers, and per printer choose the timelapse handling (render frames / copy videos / off) and detection (off / alert / alert + pause), webcam, sensitivity and moved-part watching (its sensitivity is under ⋯); plus the check interval and alert settings. Saving applies immediately, no restart, and writes `/data/settings.json`, which from then on replaces the `printers:` list in `config.yaml`. Delete that file to go back to `config.yaml`.
 
 The page has no login; keep the port on your LAN, like Moonraker itself.
 

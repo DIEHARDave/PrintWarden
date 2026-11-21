@@ -44,6 +44,11 @@ class Printer:
     webcam: str = ""
     # Obico's "detective sensitivity": higher flags failures sooner (0.5..2).
     sensitivity: float = 1.0
+    # Also watch for a part that moved, tipped over or came off the bed
+    # (compares the scene with a few minutes earlier); same alert/pause action.
+    motion: bool = True
+    # Higher flags smaller changes (0.1..5).
+    motion_sensitivity: float = 1.0
 
     @property
     def base_url(self) -> str:
@@ -56,7 +61,7 @@ class Printer:
     def timelapse_key(self) -> tuple:
         """Fields whose change means the timelapse watcher must restart."""
         d = asdict(self)
-        for k in ("detect", "webcam", "sensitivity"):
+        for k in ("detect", "webcam", "sensitivity", "motion", "motion_sensitivity"):
             d.pop(k)
         return tuple(sorted((k, str(v)) for k, v in d.items()))
 
@@ -153,6 +158,9 @@ def parse_printer(raw: dict) -> Printer:
     p = _build(Printer, raw, name)
     p.port = int(p.port)
     p.sensitivity = float(p.sensitivity)
+    p.motion_sensitivity = float(p.motion_sensitivity)
+    if isinstance(p.motion, str):
+        p.motion = p.motion.strip().lower() in ("1", "true", "yes", "on")
     if p.mode not in TIMELAPSE_MODES:
         raise ValueError(f"{name}: mode must be one of {', '.join(TIMELAPSE_MODES)}")
     if p.fetch not in ("files", "zip"):
@@ -161,6 +169,8 @@ def parse_printer(raw: dict) -> Printer:
         raise ValueError(f"{name}: detect must be one of {', '.join(DETECT_MODES)}")
     if not 0.1 <= p.sensitivity <= 5:
         raise ValueError(f"{name}: sensitivity must be between 0.1 and 5")
+    if not 0.1 <= p.motion_sensitivity <= 5:
+        raise ValueError(f"{name}: motion sensitivity must be between 0.1 and 5")
     return p
 
 

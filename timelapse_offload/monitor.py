@@ -9,7 +9,7 @@ from pathlib import Path
 
 import aiohttp
 
-from . import detect
+from . import detect, motion
 from .config import Config, Printer
 from .detect import ESCALATING_FACTOR, Model, Prediction, PredictionStore, Snapshot
 from .moonraker import Moonraker, MoonrakerError
@@ -45,7 +45,7 @@ class Notifier:
         self.log = logging.getLogger("notify")
 
     async def send(self, mr: Moonraker, title: str, text: str, color: int,
-                   snap: Snapshot | None) -> None:
+                   snap: Snapshot | None, before: bytes | None = None) -> None:
         if self.cfg.notify.console:
             msg = f"{title}: {text}".replace('"', "'").replace("\n", " ")
             try:
@@ -56,13 +56,19 @@ class Notifier:
         if not hook:
             return
         embed = {"title": title, "description": text, "color": color}
+        embeds = [embed]
         form = aiohttp.FormData()
         if snap is not None:
             embed["image"] = {"url": "attachment://snapshot.jpg"}
             form.add_field("files[0]", snap.jpeg, filename="snapshot.jpg",
                            content_type="image/jpeg")
+        if before is not None:
+            embeds.append({"description": "A few minutes earlier", "color": color,
+                           "image": {"url": "attachment://before.jpg"}})
+            form.add_field("files[1]", before, filename="before.jpg",
+                           content_type="image/jpeg")
         form.add_field("payload_json", json.dumps({"username": "Failure detection",
-                                                   "embeds": [embed]}),
+                                                   "embeds": embeds}),
                        content_type="application/json")
         try:
             async with self.session.post(hook, data=form,
@@ -103,6 +109,9 @@ class Detector:
         self.paused_by_us = False
         self.events: deque = deque(maxlen=20)
         self.infer_seconds = 0.0
+        self.motion = motion.MotionWatch()
+        self.moved = False
+        self.pos: tuple[float, float] | None = None
         self.wake = asyncio.Event()
 
     # --- printer access ---
@@ -128,8 +137,10 @@ class Detector:
 
     async def poll_state(self) -> None:
         stats = await self.mr.get("/printer/objects/query", print_stats="state,filename",
-                                  virtual_sdcard="progress")
+                                  virtual_sdcard="progress", toolhead="position")
         st = stats["status"]
+        pos = st.get("toolhead", {}).get("position") or []
+        self.pos = (float(pos[0]), float(pos[1])) if len(pos) >= 2 else None
         new = st.get("print_stats", {}).get("state", "")
         self.filename = st.get("print_stats", {}).get("filename", "") or self.filename
         self.progress = float(st.get("virtual_sdcard", {}).get("progress") or 0)
@@ -139,16 +150,20 @@ class Detector:
         self.log.info("print state %s -> %s", old or "unknown", new)
         if new == "printing" and old not in ACTIVE:
             self.new_print()
-        elif new == "printing" and old == "paused" and (self.warned or self.failed):
-            # Resumed after an alert: the person looked and decided to carry on.
-            self.pred.reset_print()
-            self.warned = self.failed = self.paused_by_us = False
-            self.event("resumed", "Resumed; watching again after a short grace period")
+        elif new == "printing" and old == "paused":
+            # Things may have been moved by hand while paused: new reference.
+            self.motion.reset()
+            if self.warned or self.failed or self.moved:
+                # Resumed after an alert: the person looked and decided to carry on.
+                self.pred.reset_print()
+                self.warned = self.failed = self.paused_by_us = self.moved = False
+                self.event("resumed", "Resumed; watching again after a short grace period")
 
     def new_print(self) -> None:
         self.pred.reset_print()
         self.history.clear()
-        self.ignored = self.warned = self.failed = self.paused_by_us = False
+        self.ignored = self.warned = self.failed = self.paused_by_us = self.moved = False
+        self.motion.reset()
         self.event("start", f"Print started: {self.filename}")
 
     def event(self, kind: str, text: str) -> None:
@@ -196,7 +211,29 @@ class Detector:
         sens = self.printer.sensitivity
         score = self.pred.normalized(sens)
         self.history.append((round(snap.taken), round(score, 3)))
+        mres = None
+        if self.printer.motion:
+            was = self.motion.last.state
+            mres = await asyncio.to_thread(self.motion.update, snap.jpeg, snap.taken, size,
+                                           self.printer.motion_sensitivity, self.pos)
+            if mres.note:
+                self.log.info("motion: %s", mres.note)
+            if mres.state == "candidate" and was != "candidate":
+                self.log.info("motion: possible move (area %.3f)", mres.area)
+                self.event("motion", "Something changed on the bed; checking it stays")
         if self.ignored:
+            return
+        if mres is not None and mres.state == "moved" and not self.moved:
+            self.moved = True
+            self.log.warning("part moved (area %.3f)", mres.area)
+            before = self.motion.before_jpeg
+            if self.printer.detect == "pause" and not self.paused_by_us:
+                self.paused_by_us = True
+                await self.pause(snap, "moved", "Print paused: a part moved or came loose",
+                                 before)
+            else:
+                await self.alert(snap, "moved", "A part moved or came loose", 0xD83C3E,
+                                 before)
             return
         failing = self.pred.failing(sens, ESCALATING_FACTOR)
         warning = self.pred.failing(sens)
@@ -210,37 +247,50 @@ class Detector:
             self.warned = True
             await self.alert(snap, "warning", "Possible print failure", 0xE8A33D)
 
-    async def alert(self, snap: Snapshot, kind: str, title: str, color: int) -> None:
+    def save(self, kind: str, snap: Snapshot, before: bytes | None) -> None:
+        folder = self.cfg.detection.flagged_dir / self.printer.name
+        if before is not None:
+            detect.save_flagged(folder, "before", Snapshot(jpeg=before, taken=snap.taken))
+        detect.save_flagged(folder, kind, snap)
+
+    async def alert(self, snap: Snapshot, kind: str, title: str, color: int,
+                    before: bytes | None = None) -> None:
         self.log.warning("%s (score %.2f)", title.lower(), self.pred.normalized(
             self.printer.sensitivity))
-        detect.save_flagged(self.cfg.detection.flagged_dir / self.printer.name, kind, snap)
+        self.save(kind, snap, before)
         self.event(kind, title)
         await self.notifier.send(self.mr, f"{self.printer.name}: {title}",
-                                 self.describe(), color, snap)
+                                 self.describe(kind), color, snap, before)
 
-    async def pause(self, snap: Snapshot) -> None:
-        detect.save_flagged(self.cfg.detection.flagged_dir / self.printer.name, "paused", snap)
+    async def pause(self, snap: Snapshot, kind: str = "paused",
+                    title: str = "Print paused: likely failure",
+                    before: bytes | None = None) -> None:
+        self.save(kind, snap, before)
         try:
             await self.mr.post("/printer/print/pause")
-            title, color = "Print paused: likely failure", 0xD83C3E
-            self.log.warning("paused the print (likely failure)")
-            self.event("paused", "Paused the print")
+            self.log.warning("paused the print (%s)", title.lower())
+            self.event("paused", title)
         except (MoonrakerError, aiohttp.ClientError, asyncio.TimeoutError) as e:
-            title, color = f"Likely failure; pause FAILED ({e})", 0xD83C3E
+            title = f"{title.split(': ', 1)[-1]}; pause FAILED ({e})"
             self.log.error("pause failed: %s", e)
             self.event("failure", f"Pause failed: {e}")
         await self.notifier.send(self.mr, f"{self.printer.name}: {title}",
-                                 self.describe(), color, snap)
+                                 self.describe(kind), 0xD83C3E, snap, before)
 
-    def describe(self) -> str:
-        return (f"{self.filename or 'print'} at {self.progress * 100:.0f}%, "
-                f"failure score {self.pred.normalized(self.printer.sensitivity) * 100:.0f}%")
+    def describe(self, kind: str = "") -> str:
+        where = f"{self.filename or 'print'} at {self.progress * 100:.0f}%"
+        if kind == "moved":
+            return (f"{where}. The picture changed on the bed and stayed changed; "
+                    "compare with the earlier snapshot.")
+        return (f"{where}, failure score "
+                f"{self.pred.normalized(self.printer.sensitivity) * 100:.0f}%")
 
     # --- page actions ---
 
     def ignore(self) -> None:
         self.ignored = True
         self.event("ignored", "Marked as not a failure; no more alerts this print")
+        self.motion.reset(keep_frames=True)
 
     def status(self) -> dict:
         p = self.printer
@@ -248,7 +298,7 @@ class Detector:
         score = self.pred.normalized(sens) if self.pred.current_frame_num else 0.0
         level = "ok"
         if self.state == "printing" and p.detect != "off":
-            if self.pred.failing(sens, ESCALATING_FACTOR):
+            if self.pred.failing(sens, ESCALATING_FACTOR) or self.moved:
                 level = "failing"
             elif self.pred.failing(sens):
                 level = "warning"
@@ -267,6 +317,10 @@ class Detector:
             "history": list(self.history),
             "events": list(self.events),
             "infer_ms": round(self.infer_seconds * 1000),
+            "motion": None if not p.motion else {
+                "state": "moved" if self.moved else self.motion.last.state,
+                "score": round(min(self.motion.last.score, 9.99), 2),
+                "cells": self.motion.last.cells if self.motion.last.score >= 0.5 else []},
         }
 
     def flagged(self) -> list[Path]:

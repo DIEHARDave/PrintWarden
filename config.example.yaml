@@ -61,6 +61,8 @@ printers:
     detect: pause         # off (default) | alert | pause
     # webcam: ""          # Moonraker webcam name; empty = first one with snapshots
     # sensitivity: 1.0    # higher flags failures sooner (0.1..5)
+    # motion: true        # also catch a part that moved or came loose
+    # motion_sensitivity: 1.0   # higher catches smaller changes (0.1..5)
   - name: AD5X-2
     host: 10.0.1.179
   - name: Creator5
