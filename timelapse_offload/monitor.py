@@ -30,6 +30,20 @@ def snapshot_url(printer: Printer, cam: dict) -> str:
     return f"http://{printer.host}{url}"
 
 
+def stream_url(printer: Printer, cam: dict | None) -> str:
+    """MJPEG stream the browser can show in an <img>, or "" if the camera has none.
+    camera-streamer lists its WebRTC page; the same server also serves stream.mjpg."""
+    if not cam:
+        return ""
+    url = cam.get("stream_url") or ""
+    service = cam.get("service") or ""
+    if service.startswith("webrtc-camerastreamer") and url.rstrip("/").endswith("/webrtc"):
+        url = url.rstrip("/")[:-len("webrtc")] + "stream.mjpg"
+    elif service not in ("mjpegstreamer", "mjpegstreamer-adaptive", "uv4l-mjpeg") or not url:
+        return ""
+    return snapshot_url(printer, {"snapshot_url": url})
+
+
 def pick_webcam(cams: list[dict], wanted: str) -> dict | None:
     usable = [c for c in cams if c.get("enabled", True) and c.get("snapshot_url")
               and c.get("service") != "iframe"]
@@ -306,6 +320,7 @@ class Detector:
                 level = "warming"
         return {
             "name": p.name, "host": p.host, "mode": p.mode, "detect": p.detect,
+            "stream": stream_url(p, pick_webcam(self.cams, p.webcam)),
             "online": self.online, "error": self.error or self.model.error,
             "state": self.state, "filename": self.filename, "progress": self.progress,
             "score": round(score, 3), "level": level, "ignored": self.ignored,

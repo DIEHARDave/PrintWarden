@@ -46,7 +46,10 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
 .cam { position: relative; background: #000; aspect-ratio: 16/9; }
 .cam img, .cam svg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .cam .none { position: absolute; inset: 0; display: grid; place-items: center; color: #9aa3ad; font-size: 13px; }
-.cam .age { position: absolute; right: 6px; bottom: 6px; background: rgba(0,0,0,.6); color: #fff;
+.cam img.live { z-index: 0; }
+.cam svg { z-index: 1; }
+#livebox { color: var(--muted); font-size: 12.5px; display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+.cam .age { z-index: 2; position: absolute; right: 6px; bottom: 6px; background: rgba(0,0,0,.6); color: #fff;
   font-size: 11px; padding: 1px 6px; border-radius: 4px; }
 .body { padding: 10px 12px 12px; display: grid; gap: 8px; }
 .file { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -112,6 +115,7 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
   <h1>Print Watch</h1>
   <nav><button id="tab-mon" class="on">Monitor</button><button id="tab-set">Settings</button></nav>
   <span id="modelnote"></span>
+  <label id="livebox" title="Show the printers' webcam streams instead of snapshots. Detection boxes are drawn from the latest checked frame."><input type="checkbox" id="live"> Live video</label>
 </header>
 <main>
   <div id="mon" class="grid"></div>
@@ -159,6 +163,8 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const enc = encodeURIComponent;
 let status = null, settings = null, dirty = false;
 const imgState = {};   // name -> {src, at}
+const liveEls = {};    // name -> {img, src, ok, failedAt}: stream <img>s kept across re-renders
+let liveOn = true; try { liveOn = localStorage.getItem("live") !== "0"; } catch (e) {}
 
 // ---------- tabs ----------
 function tab(which) {
@@ -167,6 +173,7 @@ function tab(which) {
   $("#mon").hidden = which !== "mon";
   $("#set").hidden = which !== "set";
   if (which === "set" && !dirty) loadSettings();
+  if (which !== "mon") stopLive();
   try { localStorage.setItem("tab", which); } catch (e) {}
 }
 $("#tab-mon").onclick = () => tab("mon");
@@ -189,7 +196,7 @@ function spark(hist) {
 }
 function boxes(s) {
   const snap = s.snapshot;
-  if (!snap || !snap.size[0] || !s.detect_frame) return "";
+  if (!snap || !snap.size[0] || !(s.detect_frame || (s.watching && useLive(s)))) return "";
   const [w, h] = snap.size;
   return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">${snap.boxes.map(b =>
     `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#ffd23f" stroke-width="${Math.max(2, w / 400)}"><title>${Math.round(b.conf * 100)}%</title></rect>`).join("")}${(s.motion?.cells || []).map(([x, y, bw, bh]) =>
@@ -217,7 +224,8 @@ function stateChip(s) {
 function card(s) {
   const printing = s.state === "printing" || s.state === "paused";
   const watching = s.detect !== "off" && printing;
-  s.detect_frame = watching && s.snapshot;
+  s.watching = watching;
+  s.detect_frame = watching && s.snapshot && !useLive(s);
   const lvl = watching ? s.level : "ok";
   const score = Math.round(s.score * 100);
   const modes = [
@@ -268,8 +276,11 @@ function render() {
   for (const s of status.printers) {
     const el = mon.querySelector(`.card[data-name="${CSS.escape(s.name)}"]`);
     if (open.has(s.name)) el.querySelector("details")?.setAttribute("open", "");
-    if (s.online) loadImg(el, s, false);
+    if (useLive(s)) attachLive(el, s);
+    else { stopLive(s.name); if (s.online) loadImg(el, s, false); }
   }
+  for (const name of Object.keys(liveEls))
+    if (!status.printers.some(p => p.name === name)) stopLive(name);
   const note = status.model_error ? `<span style="color:var(--bad)">${esc(status.model_error)}</span>` :
     status.model_ready ? `Checking every ${status.interval}s while printing` : "Detection model loads on first print";
   $("#modelnote").innerHTML = note;
@@ -300,11 +311,71 @@ function loadImg(el, s, force) {
     if (!st.blob) { none.textContent = "No camera image"; none.title = e.message; }
   });
 }
+// ---------- live streams ----------
+function useLive(s) {
+  const L = liveEls[s.name];
+  return liveOn && s.online && !!s.stream && !document.hidden && !$("#mon").hidden
+    && !(L && L.failedAt && Date.now() - L.failedAt < 60000);
+}
+function liveLabel(el, s) {
+  const age = el.querySelector(".cam .age"), none = el.querySelector(".cam .none"), L = liveEls[s.name];
+  if (!L || !L.ok) return;
+  none.hidden = true;
+  const boxed = s.watching && s.snapshot && (s.snapshot.boxes.length || s.motion?.cells?.length);
+  age.textContent = boxed ? `Live · boxes from ${ago(s.snapshot.t)}` : "Live";
+  age.hidden = false;
+}
+function attachLive(el, s) {
+  let L = liveEls[s.name];
+  if (!L || L.src !== s.stream || L.failedAt) {
+    stopLive(s.name);
+    const img = new Image();
+    img.className = "live"; img.alt = "";
+    L = liveEls[s.name] = { img, src: s.stream, ok: false, failedAt: 0 };
+    const ready = () => {
+      if (L.ok || liveEls[s.name] !== L) return;
+      L.ok = true;
+      const cur = $(`#mon .card[data-name="${CSS.escape(s.name)}"]`);
+      if (cur) liveLabel(cur, status.printers.find(p => p.name === s.name) || s);
+    };
+    img.onload = ready;
+    img.onerror = () => {      // no stream: back to snapshots for a minute
+      if (liveEls[s.name] !== L) return;
+      L.failedAt = Date.now(); img.removeAttribute("src"); render();
+    };
+    img.src = s.stream;
+    L.poll = setInterval(() => { if (img.naturalWidth) { ready(); clearInterval(L.poll); } }, 500);
+  }
+  if (L.failedAt) return;
+  const cam = el.querySelector(".cam");
+  cam.insertBefore(L.img, cam.querySelector("svg") || cam.querySelector(".age"));
+  liveLabel(el, s);
+}
+function stopLive(name) {
+  for (const n of name ? [name] : Object.keys(liveEls)) {
+    const L = liveEls[n];
+    if (!L || L.failedAt) continue;   // keep the failure time so it is not retried at once
+    clearInterval(L.poll);
+    L.img.onload = L.img.onerror = null;
+    L.img.removeAttribute("src"); L.img.remove();
+    delete liveEls[n];
+  }
+}
+$("#live").checked = liveOn;
+$("#live").onchange = () => {
+  liveOn = $("#live").checked;
+  try { localStorage.setItem("live", liveOn ? "1" : "0"); } catch (e) {}
+  if (!liveOn) stopLive();
+  render();
+};
+document.addEventListener("visibilitychange", () => { if (document.hidden) stopLive(); else render(); });
+
 $("#mon").addEventListener("click", async ev => {
   const ig = ev.target.closest("[data-ignore]"), rf = ev.target.closest("[data-refresh]");
   if (ig) { await fetch(`api/printers/${enc(ig.dataset.ignore)}/ignore`, { method: "POST" }); poll(); }
   if (rf) {
     const s = status.printers.find(p => p.name === rf.dataset.refresh);
+    if (s && useLive(s)) { stopLive(s.name); render(); return; }
     if (s) { s.detect_frame = null; const st = imgState[s.name]; if (st) st.at = 0;
       loadImg(rf.closest(".card"), Object.assign({}, s, { detect: "off" }), true); }
   }
@@ -447,6 +518,7 @@ $("#testnotify").onclick = async () => {
 
 let saved = "mon"; try { saved = localStorage.getItem("tab") || "mon"; } catch (e) {}
 tab(saved === "set" ? "set" : "mon");
+$("#tab-mon").addEventListener("click", () => render());
 poll(); setInterval(poll, 5000);
 </script>
 </body>

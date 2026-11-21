@@ -35,6 +35,13 @@ async def index(request: web.Request) -> web.Response:
 
 async def status(request: web.Request) -> web.Response:
     sup = request.app["sup"]
+    # The live stream URL comes from the webcam list, which is only fetched with a
+    # snapshot otherwise; load it for online printers that have not had one yet.
+    dets = [d for d in (sup.detector(p.name) for p in sup.cfg.printers)
+            if d is not None and d.online and not d.cams]
+    if dets:
+        await asyncio.gather(*(asyncio.wait_for(d.webcams(), 3) for d in dets),
+                             return_exceptions=True)
     printers = []
     for p in sup.cfg.printers:
         det = sup.detector(p.name)
