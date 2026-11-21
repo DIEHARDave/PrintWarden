@@ -133,7 +133,7 @@ textarea { width: 100%; min-height: 60px; font: inherit; font-size: 13px; color:
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const COLORS = ["#ff4d4f", "#ffa940", "#fadb14", "#73d13d", "#36cfc9", "#4096ff", "#b37feb", "#f759ab"];
+const COLORS = ["#ff4d4f", "#ffa940", "#fadb14", "#73d13d", "#36cfc9", "#4096ff", "#9254de", "#f759ab", "#bae637", "#d4b106"];
 let LABELS = {}, KEYS = [], frame = null, boxes = [], current = null, sel = -1, dirty = false;
 
 const color = (label) => COLORS[Math.max(0, KEYS.indexOf(label)) % COLORS.length];
@@ -149,7 +149,7 @@ async function api(path, opts = {}) {
 // ---------- editor ----------
 function drawTypes() {
   $("types").innerHTML = KEYS.map((k, i) => `<button type="button" data-type="${k}" class="${k === current ? "on" : ""}">
-    <span class="sw" style="background:${color(k)}"></span>${esc(LABELS[k])}<span class="key">${i + 1}</span></button>`).join("");
+    <span class="sw" style="background:${color(k)}"></span>${esc(LABELS[k])}<span class="key">${i < 9 ? i + 1 : i === 9 ? 0 : ""}</span></button>`).join("");
 }
 function drawBoxes() {
   const [w, h] = frame.size;
@@ -227,7 +227,8 @@ document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(false); return; }
   if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
   const n = parseInt(e.key, 10);
-  if (n >= 1 && n <= KEYS.length) { $("types").children[n - 1].click(); return; }
+  const idx = n === 0 ? 9 : n - 1;   // keys 1-9, then 0 for the tenth type
+  if (n >= 0 && idx < KEYS.length) { $("types").children[idx].click(); return; }
   if ((e.key === "Delete" || e.key === "Backspace") && sel >= 0) { boxes.splice(sel, 1); sel = -1; mark(); drawBoxes(); }
   if (e.key === "Escape") { sel = -1; drawBoxes(); }
 });

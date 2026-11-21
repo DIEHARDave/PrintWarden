@@ -88,7 +88,7 @@ The page has no login; keep the port on your LAN, like Moonraker itself.
 
 ## Training data
 
-To build our own failure examples, the camera button at the bottom right of each watched printer's camera on Printer Monitor takes a fresh frame from that printer and opens it on the label page (`/label/`) in a new tab. Drag boxes round problems and pick their type (spaghetti, part came loose or moved, layer shift, warping, stringing, under-extrusion, blob, other; keys 1–8), say whether the frame shows a problem, looks fine or you are not sure, add a note and save. The ✎ on a flagged frame in the Activity list copies that alert frame to the label page, which is how false alarms get recorded.
+To build our own failure examples, the camera button at the bottom right of each watched printer's camera on Printer Monitor takes a fresh frame from that printer and opens it on the label page (`/label/`) in a new tab. Drag boxes round problems and pick their type (spaghetti, part came loose or moved, layer shift, warping, stringing, under-extrusion, over-extrusion, blob, cracks, other; keys 1–9 and 0), say whether the frame shows a problem, looks fine or you are not sure, add a note and save. The ✎ on a flagged frame in the Activity list copies that alert frame to the label page, which is how false alarms get recorded.
 
 Frames are kept in `/data/training/` (`<id>.jpg` + `<id>.json` with printer, time, print file and progress, verdict, boxes in pixels and the note). `/label/` lists them; **Export** (`/api/training/export.zip`) downloads the labelled ones as a YOLO dataset (`images/`, `labels/`, `classes.txt`; a "fine" frame has an empty label file) plus the JSON records.
 

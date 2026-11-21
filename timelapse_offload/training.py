@@ -34,7 +34,9 @@ LABELS = {
     "warping": "Warping / lifting",
     "stringing": "Stringing",
     "under_extrusion": "Under-extrusion / gaps",
+    "over_extrusion": "Over-extrusion",
     "blob": "Blob on nozzle / zits",
+    "cracks": "Cracks / layer splitting",
     "other": "Other problem",
 }
 VERDICTS = ("problem", "fine", "unsure")
