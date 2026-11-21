@@ -29,7 +29,8 @@ any static web server, or straight from disk.
   the timelapse and detection modes (click the detection chip to change
   it), a detection row shows the score history, part-position check,
   **Not a failure**, activity and flagged frames, and **Printers…** gets the
-  server's detection, alert and timelapse settings. Served anywhere else,
+  server's detection, alert and timelapse settings under each printer's row
+  (the Discord webhook is write-only: it is never shown once saved). Served anywhere else,
   that request fails quietly and nothing changes.
 
 ## Setup

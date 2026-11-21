@@ -389,22 +389,32 @@
   #pwSet { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
   #pwSet[hidden] { display: none; }
   #pwSet h3 { margin: 14px 0 4px; font-size: 13px; }
-  .pwrow {
-    display: grid; gap: 6px; align-items: end; padding: 6px 0;
-    grid-template-columns: 1fr 1.1fr 64px 1fr 1fr 1.1fr 70px 80px 60px;
-    border-top: 1px solid var(--border);
+  /* Per-printer server settings, under each printer's row */
+  .row .wsub {
+    grid-column: 1 / -1;
+    display: flex; flex-wrap: wrap; align-items: end; gap: 4px 10px;
+    margin: -2px 0 4px 94px; padding: 4px 8px 6px;
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 0 5px 5px 0;
   }
-  .pwrow:first-child { border-top: 0; }
-  .pwrow label, .pwglob label { display: grid; gap: 2px; font-size: 11px; color: var(--muted); }
-  .pwrow input, .pwrow select, .pwglob input, .pwglob select, #pwSubnet {
+  .row .wsub label { display: grid; gap: 2px; font-size: 11px; color: var(--muted); }
+  .row .wsub label.won { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text); align-self: center; }
+  .row .wsub input[type=text], .row .wsub input[type=number], .row .wsub input[type=password], .row .wsub select {
+    font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; width: auto; min-width: 0;
+  }
+  .row .wsub input[type=number] { width: 64px; }
+  .row .wsub button { padding: 1px 8px; }
+  .row .wsub .wmore { flex-basis: 100%; display: none; flex-wrap: wrap; gap: 4px 10px; }
+  .row .wsub.open .wmore { display: flex; }
+  .row .wsub.off > :not(.won) { display: none; }
+  .row .wsub .wnote { font-size: 11px; color: var(--muted); align-self: center; }
+  .pwglob label { display: grid; gap: 2px; font-size: 11px; color: var(--muted); }
+  .pwglob input, .pwglob select, #pwSubnet {
     width: 100%; min-width: 0;
     font: inherit; color: var(--text); background: var(--bg);
     border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px;
   }
-  .pwrow .more { grid-column: 1 / -1; display: none; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-  .pwrow.open .more { display: grid; }
-  .pwrow .icons { display: flex; gap: 2px; }
-  .pwrow .icons button { padding: 2px 7px; }
   .pwglob { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
   .pwfound { display: grid; gap: 4px; margin-top: 6px; }
   .pwfound div { display: flex; gap: 8px; align-items: center; background: var(--bg); padding: 4px 8px; border-radius: 5px; }
@@ -413,8 +423,7 @@
   .pwmsg.ok { color: var(--ok); }
   .pwmsg.bad { color: var(--err); }
   @media (max-width: 700px) {
-    .pwrow { grid-template-columns: 1fr 1fr; }
-    .pwrow .more { grid-template-columns: 1fr 1fr; }
+    .row .wsub { margin-left: 0; }
   }
   .actions .spacer { flex: 1; }
   @media (max-width: 700px) {
@@ -481,25 +490,26 @@
   <label class="spoolman-url">Spoolman <input type="text" id="spoolmanUrl" placeholder="http://10.0.1.206:7912 (empty = off)"></label>
   <section id="pwSet" hidden>
     <h2>Detection, alerts and timelapses</h2>
-    <p>Kept on the TimelapseOffload server, so they apply to everyone, not only this browser. Timelapse: <b>Render frames</b> renders moonraker-timelapse frames on the server; <b>Copy videos</b> copies finished videos from printers that render on-device (Snapmaker U1). Detection: <b>Alert</b> notifies; <b>Alert + pause</b> also pauses the print. Changes apply when you save, no restart. <span id="pwModel"></span></p>
-    <div id="pwList"></div>
+    <p>Each printer's row above has its server settings under it: tick <b>Watch</b> to have the TimelapseOffload server handle it. Timelapse: <b>Render frames</b> renders moonraker-timelapse frames on the server; <b>Copy videos</b> copies finished videos from printers that render on-device (Snapmaker U1). Detection: <b>Alert</b> notifies; <b>Alert + pause</b> also pauses the print. These live on the server, so they apply to everyone, and Save applies them at once. <span id="pwModel"></span></p>
     <div class="actions">
-      <button type="button" id="pwAdd">Add printer</button>
-      <button type="button" id="pwAddMon" title="Add every printer on this page that is not watched yet">Add this page's printers</button>
-      <span class="spacer"></span>
       <input id="pwSubnet" style="width:150px" placeholder="10.0.1.0/24">
-      <button type="button" id="pwScan">Find printers</button>
+      <button type="button" id="pwScan" title="Look for Moonraker on port 7125 across the subnet">Find printers</button>
     </div>
     <div class="pwfound" id="pwFound"></div>
-    <h3>Detection and alerts</h3>
+    <h3>Alerts and checks (all printers)</h3>
     <div class="pwglob">
       <label>Seconds between snapshots while printing <input id="pwInterval" type="number" min="3" step="1"></label>
       <label>CPU threads per check <input id="pwThreads" type="number" min="1" max="8" step="1"></label>
-      <label>Discord webhook URL <input id="pwWebhook" placeholder="https://discord.com/api/webhooks/..."></label>
+      <label>Discord webhook URL <input id="pwWebhook" type="password" autocomplete="off" spellcheck="false"></label>
       <label>Printer console message <select id="pwConsole"><option value="1">On</option><option value="0">Off</option></select></label>
     </div>
-    <div class="actions"><button type="button" id="pwTest">Send test alert</button><span id="pwTestMsg" class="pwmsg"></span></div>
-    <p style="margin-top:10px">Scoring follows Obico's failure detection: the first 30 checks of a print (5 min at 10 s) only learn what the print normally looks like. Its thresholds are tuned for 10 s. Moved parts compares the last 2 minutes of snapshots with the 2 minutes before; its sensitivity is under ⋯.</p>
+    <div class="actions">
+      <span id="pwHookState" class="pwmsg"></span>
+      <button type="button" id="pwHookClear" hidden>Remove webhook</button>
+      <span class="spacer"></span>
+      <button type="button" id="pwTest">Send test alert</button><span id="pwTestMsg" class="pwmsg"></span>
+    </div>
+    <p style="margin-top:10px">The webhook URL is never shown again once saved, here or anywhere else; paste a new one to replace it. Scoring follows Obico's failure detection: the first 30 checks of a print (5 min at 10 s) only learn what the print normally looks like; its thresholds are tuned for 10 s. Moved parts compares the last 2 minutes of snapshots with the 2 minutes before.</p>
   </section>
   <div class="actions">
     <button type="button" id="addRow">Add printer</button>
@@ -1624,130 +1634,142 @@ async function pollWatch() {
 document.addEventListener("visibilitychange", () => { if (!document.hidden) fetchWatch(); });
 
 // --- Print Watch settings ---------------------------------------------
-// The server's own settings (printers it watches and renders timelapses
-// for, detection and alerts), edited in the Printers… dialog and saved with
-// its Save button. Shown only when the page is served by TimelapseOffload.
-let pwSettings = null, pwDirty = false;
+// The server's own settings, shown when this page is served by
+// TimelapseOffload. Per-printer ones sit under each printer's row in the
+// Printers… dialog (matched by host); the rest are in their own section.
+// Save writes them to the server before the browser-side list.
+let pwSettings = null, pwOriginal = "", pwHookClear = false;
+// Order-free form of a server printer list, to tell whether anything changed
+const pwKey = (list) => JSON.stringify([...list].sort((a, b) => a.host.localeCompare(b.host))
+  .map((p) => Object.keys(p).sort().map((k) => [k, p[k]])));
 const PW_TL = [["frames", "Render frames"], ["sync", "Copy videos"], ["off", "Off"]];
 const PW_DT = [["off", "Off"], ["alert", "Alert"], ["pause", "Alert + pause"]];
 const pwOpts = (list, v) => list.map(([k, l]) => `<option value="${k}"${k === v ? " selected" : ""}>${l}</option>`).join("");
-function pwRow(p, i) {
-  return `<div class="pwrow" data-i="${i}">
-    <label>Name<input data-k="name" value="${esc(p.name)}"></label>
-    <label>Host / IP<input data-k="host" value="${esc(p.host)}"></label>
-    <label>Port<input data-k="port" type="number" value="${esc(p.port)}"></label>
-    <label>Timelapse<select data-k="mode">${pwOpts(PW_TL, p.mode)}</select></label>
-    <label>Detection<select data-k="detect">${pwOpts(PW_DT, p.detect)}</select></label>
-    <label>Webcam<select data-k="webcam"><option value="">First camera</option>${p.webcam ? `<option selected value="${esc(p.webcam)}">${esc(p.webcam)}</option>` : ""}</select></label>
-    <label>Sensitivity<input data-k="sensitivity" type="number" step="0.1" min="0.1" max="5" value="${esc(p.sensitivity)}"></label>
-    <label>Moved parts<select data-k="motion">${pwOpts([["true", "Watch"], ["false", "Off"]], String(p.motion))}</select></label>
-    <div class="icons"><button type="button" data-more title="More options">⋯</button><button type="button" data-del title="Remove">✕</button></div>
-    <div class="more">
-      <label>Moved-part sensitivity<input data-k="motion_sensitivity" type="number" step="0.1" min="0.1" max="5" value="${esc(p.motion_sensitivity)}"></label>
-      <label>Frame download<select data-k="fetch">${pwOpts([["files", "One by one"], ["zip", "As one zip"]], p.fetch)}</select></label>
-      <label>API key<input data-k="api_key" value="${esc(p.api_key)}" placeholder="only if Moonraker needs one"></label>
-      <label>Video folder (copy mode)<input data-k="sync_root" value="${esc(p.sync_root)}"></label>
-      <label>Delete after copying<select data-k="delete_after_sync">${pwOpts([["false", "No"], ["true", "Yes"]], String(p.delete_after_sync))}</select></label>
-    </div></div>`;
-}
-function pwDraw() {
-  $("pwList").innerHTML = pwSettings.printers.length ? pwSettings.printers.map(pwRow).join("")
-    : '<p>No printers. Add one, add this page\'s printers or use Find printers.</p>';
-  $("pwInterval").value = pwSettings.detection.interval;
-  $("pwThreads").value = pwSettings.detection.threads;
-  $("pwWebhook").value = pwSettings.notify.discord_webhook;
-  $("pwConsole").value = pwSettings.notify.console ? "1" : "0";
-  if (!$("pwSubnet").value) {
-    const h = pwSettings.printers.concat(printers).find((p) => /^\d+\.\d+\.\d+\.\d+$/.test(p.host));
-    $("pwSubnet").value = h ? h.host.replace(/\.\d+$/, ".0/24") : "192.168.1.0/24";
-  }
-  pwSettings.printers.forEach((p, i) => pwFillCams(i));
-}
-async function pwFillCams(i) {
-  const p = pwSettings.printers[i];
-  const sel = document.querySelector(`.pwrow[data-i="${i}"] select[data-k="webcam"]`);
-  if (!sel || !p.host) return;
-  try {
-    const res = await fetch(`api/webcams?host=${encodeURIComponent(p.host)}&port=${encodeURIComponent(p.port || 7125)}`);
-    if (!res.ok) return;
-    const names = await res.json();
-    const cur = p.webcam;
-    sel.innerHTML = `<option value="">First camera${names[0] ? ` (${esc(names[0])})` : ""}</option>` +
-      [...new Set([...names, ...(cur ? [cur] : [])])].map((n) => `<option${n === cur ? " selected" : ""} value="${esc(n)}">${esc(n)}</option>`).join("");
-  } catch {}
-}
-async function pwLoad() {
-  $("pwSaveMsg").textContent = "";
-  $("pwFound").innerHTML = "";
-  if (!watchOn && !(await fetchWatch())) { $("pwSet").hidden = true; return; }
-  try {
-    const res = await fetch("api/settings", { cache: "no-store" });
-    if (!res.ok) throw new Error(res.status);
-    pwSettings = await res.json();
-  } catch { $("pwSet").hidden = true; pwSettings = null; return; }
-  pwDirty = false;
-  $("pwModel").textContent = !watchMeta ? "" : watchMeta.model_error ? "Detection model: " + watchMeta.model_error
-    : watchMeta.model_ready ? `Checking every ${watchMeta.interval}s while printing.` : "The detection model loads on the first print.";
-  $("pwSet").hidden = false;
-  pwDraw();
-}
-function pwMark() { pwDirty = true; $("pwSaveMsg").className = "pwmsg"; $("pwSaveMsg").textContent = "Detection settings changed"; }
 function pwBlank(host = "", name = "") {
   return { name, host, port: 7125, api_key: "", mode: "frames", fetch: "files", zip_root: "timelapse",
     sync_root: "timelapse", sync_suffixes: [".mp4", "_cover.jpg"], delete_after_sync: false,
     detect: "alert", webcam: "", sensitivity: 1.0, motion: true, motion_sensitivity: 1.0 };
 }
-function pwUniqueName(name) {
-  name = (name || "printer").replace(/[^A-Za-z0-9 ._-]/g, "-").slice(0, 40);
-  while (pwSettings.printers.some((p) => p.name.toLowerCase() === name.toLowerCase())) name += "-2";
-  return name;
+function wsubHtml(host) {
+  const w = pwSettings.printers.find((p) => p.host === host);
+  const p = w || pwBlank(host);
+  return `<div class="wsub${w ? "" : " off"}" data-whost="${esc(w ? host : "")}">
+    <label class="won" title="Let the server render this printer's timelapses and watch its prints"><input type="checkbox" data-w="on"${w ? " checked" : ""}> Watch</label>
+    <label>Timelapse<select data-w="mode">${pwOpts(PW_TL, p.mode)}</select></label>
+    <label>Detection<select data-w="detect">${pwOpts(PW_DT, p.detect)}</select></label>
+    <label>Webcam<select data-w="webcam"><option value="">First camera</option>${p.webcam ? `<option selected value="${esc(p.webcam)}">${esc(p.webcam)}</option>` : ""}</select></label>
+    <label title="Raise to catch failures sooner, lower if this printer gives false alarms">Sensitivity<input type="number" data-w="sensitivity" step="0.1" min="0.1" max="5" value="${esc(p.sensitivity)}"></label>
+    <label>Moved parts<select data-w="motion">${pwOpts([["true", "Watch"], ["false", "Off"]], String(p.motion))}</select></label>
+    <label>Moved sensitivity<input type="number" data-w="motion_sensitivity" step="0.1" min="0.1" max="5" value="${esc(p.motion_sensitivity)}"></label>
+    <button type="button" data-wmore title="More server options">⋯</button>
+    <div class="wmore">
+      <label title="Also the printer's folder for finished timelapses">Server name<input type="text" data-w="name" value="${esc(w ? p.name : "")}" placeholder="from the printer name"></label>
+      <label>Moonraker port<input type="number" data-w="port" value="${esc(p.port)}"></label>
+      <label>API key<input type="password" autocomplete="off" data-w="api_key" value="${esc(p.api_key)}" placeholder="only if Moonraker needs one"></label>
+      <label>Frame download<select data-w="fetch">${pwOpts([["files", "One by one"], ["zip", "As one zip"]], p.fetch)}</select></label>
+      <label>Video folder (copy mode)<input type="text" data-w="sync_root" value="${esc(p.sync_root)}"></label>
+      <label>Delete after copying<select data-w="delete_after_sync">${pwOpts([["false", "No"], ["true", "Yes"]], String(p.delete_after_sync))}</select></label>
+    </div></div>`;
 }
-$("pwList").addEventListener("input", (e) => {
-  const k = e.target.dataset.k;
-  if (!k) return;
-  const p = pwSettings.printers[e.target.closest(".pwrow").dataset.i];
-  let v = e.target.value;
-  if (k === "port") v = Number(v) || 7125;
-  if (k === "sensitivity" || k === "motion_sensitivity") v = Number(v) || 1;
-  if (k === "motion" || k === "delete_after_sync") v = v === "true";
-  p[k] = v;
-  pwMark();
-});
-$("pwList").addEventListener("change", (e) => {
-  const k = e.target.dataset.k;
-  if (k === "host" || k === "port") pwFillCams(Number(e.target.closest(".pwrow").dataset.i));
-});
-$("pwList").addEventListener("click", (e) => {
-  const row = e.target.closest(".pwrow");
-  if (!row) return;
-  if (e.target.closest("[data-more]")) row.classList.toggle("open");
-  if (e.target.closest("[data-del]")) {
-    const p = pwSettings.printers[row.dataset.i];
-    if (!confirm(`Stop watching ${p.name || "this printer"}? Its timelapses already on the NAS stay.`)) return;
-    pwSettings.printers.splice(row.dataset.i, 1);
-    pwMark();
-    pwDraw();
-  }
-});
-$("pwAdd").addEventListener("click", () => {
-  pwSettings.printers.push(pwBlank());
-  pwMark();
-  pwDraw();
-  document.querySelector(`.pwrow[data-i="${pwSettings.printers.length - 1}"] input`).focus();
-});
-$("pwAddMon").addEventListener("click", () => {
-  const known = new Set(pwSettings.printers.map((p) => p.host));
-  let added = 0;
-  readRows().forEach((p) => {
-    if (!p.host || known.has(p.host)) return;
-    const t = tiles.find((x) => x.p.host === p.host);
-    pwSettings.printers.push(pwBlank(p.host, pwUniqueName(p.name || t?.mainsailName || p.host)));
-    known.add(p.host);
-    added++;
+const rowHost = (r) => r.querySelector('[data-k="host"]').value.trim();
+// Server settings under every row; printers the server watches that are not
+// on this page get a row of their own, so nothing is hidden or lost
+function attachWsubs() {
+  if (!pwSettings) return;
+  const rows = [...$("rows").querySelectorAll("[data-row]")];
+  const hosts = new Set(rows.map(rowHost));
+  pwSettings.printers.filter((w) => !hosts.has(w.host)).forEach((w) => {
+    $("rows").insertAdjacentHTML("beforeend", rowHtml({ name: "", host: w.host, stream: "/webcam/?action=stream", screen: "", rotate: 0, flip: false, show: true }));
   });
-  if (added) { pwMark(); pwDraw(); }
-  $("pwSaveMsg").className = "pwmsg";
-  $("pwSaveMsg").textContent = added ? `Added ${added}, not saved yet` : "Every printer here is already watched";
+  $("rows").querySelectorAll("[data-row]").forEach((r) => {
+    if (r.querySelector(".wsub")) return;
+    r.insertAdjacentHTML("beforeend", wsubHtml(rowHost(r)));
+    pwFillCams(r);
+  });
+}
+async function pwFillCams(r) {
+  const sel = r.querySelector('.wsub select[data-w="webcam"]');
+  const host = rowHost(r);
+  if (!sel || !host) return;
+  const port = r.querySelector('.wsub [data-w="port"]').value || 7125;
+  try {
+    const res = await fetch(`api/webcams?host=${encodeURIComponent(host)}&port=${encodeURIComponent(port)}`);
+    if (!res.ok) return;
+    const names = await res.json();
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">First camera${names[0] ? ` (${esc(names[0])})` : ""}</option>` +
+      [...new Set([...names, ...(cur ? [cur] : [])])].map((n) => `<option${n === cur ? " selected" : ""} value="${esc(n)}">${esc(n)}</option>`).join("");
+  } catch {}
+}
+function pwHookShow() {
+  const set = pwSettings.notify.discord_webhook_set && !pwHookClear;
+  $("pwWebhook").value = "";
+  $("pwWebhook").placeholder = set ? "Saved (hidden). Paste a new URL to replace it" : "https://discord.com/api/webhooks/...";
+  $("pwHookState").textContent = pwHookClear ? "Webhook will be removed when you save" : set ? "A webhook is saved" : "No webhook: alerts only go to the printer console";
+  $("pwHookClear").hidden = !set;
+}
+async function pwLoad() {
+  $("pwSaveMsg").textContent = "";
+  $("pwFound").innerHTML = "";
+  pwHookClear = false;
+  if (!watchOn && !(await fetchWatch())) { $("pwSet").hidden = true; pwSettings = null; return; }
+  try {
+    const res = await fetch("api/settings", { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    pwSettings = await res.json();
+  } catch { $("pwSet").hidden = true; pwSettings = null; return; }
+  pwOriginal = pwKey(pwSettings.printers);
+  $("pwModel").textContent = !watchMeta ? "" : watchMeta.model_error ? "Detection model: " + watchMeta.model_error
+    : watchMeta.model_ready ? `Checking every ${watchMeta.interval}s while printing.` : "The detection model loads on the first print.";
+  $("pwInterval").value = pwSettings.detection.interval;
+  $("pwThreads").value = pwSettings.detection.threads;
+  $("pwConsole").value = pwSettings.notify.console ? "1" : "0";
+  pwHookShow();
+  if (!$("pwSubnet").value) {
+    const h = pwSettings.printers.concat(printers).find((p) => /^\d+\.\d+\.\d+\.\d+$/.test(p.host));
+    $("pwSubnet").value = h ? h.host.replace(/\.\d+$/, ".0/24") : "192.168.1.0/24";
+  }
+  $("pwSet").hidden = false;
+  attachWsubs();
+}
+// The server's printer list, read back from the rows
+function pwReadPrinters() {
+  const out = [], used = new Set();
+  for (const r of $("rows").querySelectorAll("[data-row]")) {
+    const host = rowHost(r), sub = r.querySelector(".wsub");
+    if (!host || !sub || !sub.querySelector('[data-w="on"]').checked) continue;
+    const base = pwSettings.printers.find((x) => x.host === (sub.dataset.whost || host)) || pwBlank(host);
+    const p = { ...base, host };
+    sub.querySelectorAll("[data-w]").forEach((el) => {
+      const k = el.dataset.w;
+      if (k === "on") return;
+      let v = el.value.trim();
+      if (k === "port") v = Number(v) || 7125;
+      if (k === "sensitivity" || k === "motion_sensitivity") v = Number(v) || 1;
+      if (k === "motion" || k === "delete_after_sync") v = v === "true";
+      p[k] = v;
+    });
+    let name = p.name || r.querySelector('[data-k="name"]').value.trim()
+      || tiles.find((t) => t.p.host === host)?.mainsailName || host;
+    name = name.replace(/[^A-Za-z0-9 ._-]/g, "-").slice(0, 40);
+    while (used.has(name.toLowerCase())) name += "-2";
+    used.add(name.toLowerCase());
+    p.name = name;
+    out.push(p);
+  }
+  return out;
+}
+$("rows").addEventListener("click", (e) => {
+  const sub = e.target.closest(".wsub");
+  if (sub && e.target.closest("[data-wmore]")) sub.classList.toggle("open");
+});
+$("rows").addEventListener("change", (e) => {
+  const sub = e.target.closest(".wsub");
+  if (sub && e.target.dataset.w === "on") sub.classList.toggle("off", !e.target.checked);
+  if (e.target.dataset.k === "host" || e.target.dataset.w === "port") {
+    const r = e.target.closest("[data-row]");
+    if (r) pwFillCams(r);
+  }
 });
 $("pwScan").addEventListener("click", async () => {
   const btn = $("pwScan");
@@ -1757,10 +1779,10 @@ $("pwScan").addEventListener("click", async () => {
       body: JSON.stringify({ subnet: $("pwSubnet").value }) });
     const d = await res.json();
     if (!res.ok) throw new Error(d.error);
-    const known = new Set(pwSettings.printers.map((p) => p.host));
+    const known = new Set([...$("rows").querySelectorAll("[data-row]")].map(rowHost));
     $("pwFound").innerHTML = d.found.length ? d.found.map((f) => `<div><b>${esc(f.host)}</b>
       <span>${esc(f.hostname)} · Klipper ${esc(f.state)}</span><span class="spacer"></span>
-      ${known.has(f.host) ? "<span>added</span>" : `<button type="button" data-addhost="${esc(f.host)}" data-hn="${esc(f.hostname)}">Add</button>`}</div>`).join("")
+      ${known.has(f.host) ? "<span>on this page</span>" : `<button type="button" data-addhost="${esc(f.host)}">Add</button>`}</div>`).join("")
       : "<p>No Moonraker found on port 7125 in that range.</p>";
   } catch (e) { $("pwFound").innerHTML = `<p class="pwmsg bad">${esc(e.message)}</p>`; }
   btn.disabled = false; btn.textContent = "Find printers";
@@ -1768,12 +1790,13 @@ $("pwScan").addEventListener("click", async () => {
 $("pwFound").addEventListener("click", (e) => {
   const b = e.target.closest("[data-addhost]");
   if (!b) return;
-  pwSettings.printers.push(pwBlank(b.dataset.addhost, pwUniqueName(b.dataset.hn || b.dataset.addhost)));
-  pwMark();
-  pwDraw();
-  b.replaceWith(Object.assign(document.createElement("span"), { textContent: "added" }));
+  $("rows").insertAdjacentHTML("beforeend", rowHtml({ name: "", host: b.dataset.addhost, stream: "/webcam/?action=stream", screen: "", rotate: 0, flip: false, show: true }));
+  attachWsubs();
+  const sub = $("rows").lastElementChild.querySelector(".wsub");
+  if (sub) { sub.querySelector('[data-w="on"]').checked = true; sub.classList.remove("off"); }
+  b.replaceWith(Object.assign(document.createElement("span"), { textContent: "added below" }));
 });
-for (const id of ["pwInterval", "pwThreads", "pwWebhook", "pwConsole"]) $(id).addEventListener("input", pwMark);
+$("pwHookClear").addEventListener("click", () => { pwHookClear = true; pwHookShow(); });
 $("pwTest").addEventListener("click", async () => {
   $("pwTestMsg").textContent = "Sending…";
   const res = await fetch("api/test-notify", { method: "POST" }).catch(() => null);
@@ -1782,20 +1805,32 @@ $("pwTest").addEventListener("click", async () => {
 });
 // Saves the server side first; if it is refused the dialog stays open
 async function pwSave() {
-  if (!pwDirty || !pwSettings) return true;
-  pwSettings.detection = { interval: Number($("pwInterval").value), threads: Number($("pwThreads").value) };
-  pwSettings.notify = { discord_webhook: $("pwWebhook").value.trim(), console: $("pwConsole").value === "1" };
+  if (!pwSettings) return true;
+  const hook = $("pwWebhook").value.trim();
+  const next = {
+    printers: pwReadPrinters(),
+    detection: { interval: Number($("pwInterval").value), threads: Number($("pwThreads").value) },
+    notify: { console: $("pwConsole").value === "1" },
+  };
+  // The webhook is only sent when replaced or removed; left out, the server keeps it
+  if (hook) next.notify.discord_webhook = hook;
+  else if (pwHookClear) next.notify.discord_webhook = "";
+  const same = pwKey(next.printers) === pwOriginal
+    && next.detection.interval === pwSettings.detection.interval && next.detection.threads === pwSettings.detection.threads
+    && next.notify.console === pwSettings.notify.console && !("discord_webhook" in next.notify);
+  if (same) return true;
   try {
     const res = await fetch("api/settings", { method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(pwSettings) });
+      body: JSON.stringify(next) });
     const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(d.error || res.status);
     pwSettings = d;
-    pwDirty = false;
+    pwOriginal = pwKey(d.printers);
+    $("pwWebhook").value = "";
     return true;
   } catch (e) {
     $("pwSaveMsg").className = "pwmsg bad";
-    $("pwSaveMsg").textContent = "Detection settings not saved: " + e.message;
+    $("pwSaveMsg").textContent = "Server settings not saved: " + e.message;
     return false;
   }
 }
@@ -1932,16 +1967,18 @@ $("rows").addEventListener("click", (e) => {
   $("rows").addEventListener("pointercancel", finish);
 }
 $("settingsBtn").addEventListener("click", () => {
+  pwSettings = null;            // reloaded fresh below, then its rows are attached
   fillRows(printers);
   $("spoolmanUrl").value = spoolmanBase;
-  $("pwSet").hidden = !pwSettings;
+  $("pwSet").hidden = true;
   $("settings").showModal();
   pwLoad();
 });
 $("addRow").addEventListener("click", () => {
   $("rows").insertAdjacentHTML("beforeend", rowHtml({ name: "", host: "", stream: "/webcam/?action=stream", screen: "", rotate: 0, flip: false, show: true }));
+  attachWsubs();
 });
-$("resetRows").addEventListener("click", () => fillRows(DEFAULT_PRINTERS));
+$("resetRows").addEventListener("click", () => { fillRows(DEFAULT_PRINTERS); attachWsubs(); });
 // Settings are per origin, so export/import is how they move between browsers or hosts
 $("exportSettings").addEventListener("click", () => {
   const data = {};
