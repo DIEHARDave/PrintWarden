@@ -30,7 +30,9 @@ any static web server, or straight from disk.
   it), a detection row shows the score history, part-position check,
   **Not a failure**, activity and flagged frames, and **Printers…** gets the
   server's detection, alert and timelapse settings under each printer's row
-  (the Discord webhook is write-only: it is never shown once saved). Served anywhere else,
+  (the Discord webhook is write-only: it is never shown once saved). A camera button on each
+  watched camera, and a ✎ on each flagged frame, open the server's label page
+  to box problems for training data. Served anywhere else,
   that request fails quietly and nothing changes.
 
 ## Setup
