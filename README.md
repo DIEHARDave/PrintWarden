@@ -35,13 +35,15 @@ any static web server, or straight from disk.
 - **AI Monitor** (optional): when the page is served by TimelapseOffload
   (the author's timelapse and failure-detection container, not public, which
   has its own copy of this page), it reads that server's detection status
-  from `api/status`. The detectors' boxes are drawn over each live camera,
-  and each printer's AI Monitor card has the timelapse and detection chips
-  (spaghetti and moved-parts chips, each clicked through off, alert and alert + pause) (yellow spaghetti, red
-  dashed moved part, cyan problem type), the failure score and its history,
-  the part-position check, the problem types seen, **Not a failure**, and the
-  alert history with this print's newest six flagged frames (a link opens all of them) (✎ opens a frame on the server's label
-  page for training data). The tile border turns
+  from `api/status`. The detectors' boxes are drawn over each live camera
+  (yellow spaghetti, red dashed moved part, cyan problem type). Each
+  printer's AI Monitor card has a timelapse chip and two detection chips,
+  **spaghetti** and **moved**, each clicked through off, alert and
+  alert + pause; the failure score and its history, the part-position check,
+  the problem types seen and **Not a failure**; and the alert history with
+  this print's newest six flagged frames still to review, with what was
+  detected drawn on them (a link opens all of them; clicking one opens it on
+  the server's label page, and once marked it leaves the list). The tile border turns
   orange or red on an alert, a camera button on the live camera captures a
   frame for labelling, and **Printers…** gets the server's detection, alert
   and timelapse settings under each printer's row (the Discord webhook is
