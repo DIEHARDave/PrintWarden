@@ -304,17 +304,35 @@ class Detector:
             if n == 1:
                 self.log.info("problem type %s above %.0f%%", k, faults.ALERT_CONF * 100)
 
-    def save(self, kind: str, snap: Snapshot, before: bytes | None) -> None:
+    def save(self, kind: str, snap: Snapshot, before: bytes | None, reason: str = "") -> None:
+        """Keep the frame, and next to it (same name, .json) what was detected and why:
+        the boxes to draw on it later and the alert's wording."""
         folder = self.cfg.detection.flagged_dir / self.printer.name
+        cells = self.motion.last.cells if kind == "moved" else []
         if before is not None:
-            detect.save_flagged(folder, "before", Snapshot(jpeg=before, taken=snap.taken))
-        detect.save_flagged(folder, kind, snap)
+            path = detect.save_flagged(folder, "before", Snapshot(jpeg=before, taken=snap.taken))
+            self._save_info(path, {"kind": "before", "reason": "A few minutes before: " + reason,
+                                   "size": list(snap.size), "boxes": [], "cells": cells, "faults": []})
+        path = detect.save_flagged(folder, kind, snap)
+        self._save_info(path, {
+            "kind": kind, "reason": reason, "size": list(snap.size),
+            "boxes": [b for b in snap.boxes if b["conf"] >= detect.VISUALIZATION_THRESH],
+            "cells": cells,
+            "faults": [b for b in self.fault_boxes if b["conf"] >= faults.SHOW_CONF],
+            "score": round(self.pred.normalized(self.printer.sensitivity), 3),
+            "file": self.filename, "progress": round(self.progress, 3)})
+
+    def _save_info(self, jpg: Path, info: dict) -> None:
+        try:
+            jpg.with_suffix(".json").write_text(json.dumps({"t": time.time(), **info}), encoding="utf-8")
+        except OSError as e:
+            self.log.warning("could not save the detection info: %s", e)
 
     async def alert(self, snap: Snapshot, kind: str, title: str, color: int,
                     before: bytes | None = None, text: str = "") -> None:
         self.log.warning("%s (score %.2f)", title.lower(), self.pred.normalized(
             self.printer.sensitivity))
-        self.save(kind, snap, before)
+        self.save(kind, snap, before, f"{title}. {text or self.describe(kind)}")
         self.event(kind, title)
         await self.notifier.send(self.mr, f"{self.printer.name}: {title}",
                                  text or self.describe(kind), color, snap, before)
@@ -322,7 +340,7 @@ class Detector:
     async def pause(self, snap: Snapshot, kind: str = "paused",
                     title: str = "Print paused: likely failure",
                     before: bytes | None = None) -> None:
-        self.save(kind, snap, before)
+        self.save(kind, snap, before, f"{title}. {self.describe(kind)}")
         try:
             await self.mr.post("/printer/print/pause")
             self.log.warning("paused the print (%s)", title.lower())

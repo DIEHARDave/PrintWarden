@@ -247,4 +247,5 @@ def save_flagged(folder: Path, kind: str, snap: Snapshot, keep: int = 40) -> Pat
     path.write_bytes(snap.jpeg)
     for old in sorted(folder.glob("*.jpg"))[:-keep]:
         old.unlink(missing_ok=True)
+        old.with_suffix(".json").unlink(missing_ok=True)
     return path

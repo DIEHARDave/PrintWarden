@@ -112,6 +112,11 @@ async def from_flagged(request: web.Request) -> web.Response:
     name = str(body.get("file", ""))
     if det is None or not re.fullmatch(r"[\w.-]+\.jpg", name):
         raise web.HTTPNotFound()
+    # Opened before: carry on with that record rather than making a second copy
+    for js in sorted(folder(sup).glob("*.json")) if folder(sup).exists() else []:
+        rec = _read(js)
+        if rec.get("source") == f"flagged/{name}" and rec.get("printer") == det.printer.name:
+            return web.json_response(rec)
     src = det.cfg.detection.flagged_dir / det.printer.name / name
     if not src.is_file():
         raise web.HTTPNotFound(text="that flagged frame is gone")
@@ -225,6 +230,28 @@ def _export_empty() -> bytes:
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("classes.txt", "\n".join(LABELS) + "\n")
     return buf.getvalue()
+
+
+_reviewed: tuple = (None, set())
+
+
+def reviewed_flagged(sup) -> set:
+    """(printer, file) of every flagged frame that has been labelled on the label page
+    (shows a problem / looks fine / not sure). Cached until the training folder changes."""
+    global _reviewed
+    d = folder(sup)
+    if not d.exists():
+        return set()
+    key = (d.stat().st_mtime, max((p.stat().st_mtime for p in d.glob("*.json")), default=0))
+    if _reviewed[0] != key:
+        done = set()
+        for js in d.glob("*.json"):
+            rec = _read(js)
+            src = str(rec.get("source", ""))
+            if src.startswith("flagged/") and rec.get("verdict"):
+                done.add((rec.get("printer"), src[len("flagged/"):]))
+        _reviewed = (key, done)
+    return _reviewed[1]
 
 
 def routes() -> list:

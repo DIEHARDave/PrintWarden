@@ -2,6 +2,7 @@
 
 import asyncio
 import ipaddress
+import json
 import logging
 import re
 import time
@@ -10,7 +11,8 @@ from importlib import resources
 import aiohttp
 from aiohttp import web
 
-from . import config, training
+from . import config, faults, training
+from .detect import VISUALIZATION_THRESH
 from .detect import Snapshot
 from .moonraker import MoonrakerError
 
@@ -72,7 +74,11 @@ async def status(request: web.Request) -> web.Response:
         if det is None:
             continue
         s = det.status()
-        s["flagged"] = [f.name for f in det.flagged(this_print=True)]
+        # Frames already reviewed on the label page are done with
+        done = training.reviewed_flagged(sup)
+        frames = [f.name for f in det.flagged(this_print=True)]
+        s["flagged"] = [f for f in frames if (p.name, f) not in done]
+        s["flagged_reviewed"] = len(frames) - len(s["flagged"])
         printers.append(s)
     return web.json_response({"printers": printers, "interval": sup.cfg.detection.interval,
                               "model_ready": sup.model._session is not None,
@@ -117,6 +123,43 @@ async def webcams(request: web.Request) -> web.Response:
         raise web.HTTPBadGateway(text=str(e) or type(e).__name__)
     return web.json_response([c.get("name") for c in cams
                               if c.get("snapshot_url") and c.get("service") != "iframe"])
+
+
+async def flagged_info(request: web.Request) -> web.Response:
+    """What was detected on a flagged frame: boxes to draw, and why it alerted. Frames
+    saved before this was recorded get the two models run on them once (moved-part
+    areas cannot be worked out again: they need the frames before)."""
+    det = _detector(request)
+    sup = request.app["sup"]
+    name = request.match_info["file"]
+    if not FILE_RE.match(name):
+        raise web.HTTPNotFound()
+    jpg = det.cfg.detection.flagged_dir / det.printer.name / name
+    if not jpg.is_file():
+        raise web.HTTPNotFound()
+    js = jpg.with_suffix(".json")
+    if js.is_file():
+        try:
+            return web.json_response(json.loads(js.read_text(encoding="utf-8")))
+        except ValueError:
+            pass
+    jpeg = jpg.read_bytes()
+    kind = name.rsplit("_", 1)[-1][:-4]
+    info = {"kind": kind, "reason": "", "boxes": [], "cells": [], "faults": [], "recomputed": True}
+    try:
+        boxes, size, _ = await sup.model.detect(jpeg)
+        info["size"] = list(size)
+        info["boxes"] = [b for b in boxes if b["conf"] >= VISUALIZATION_THRESH]
+        if sup.fault_model.available:
+            fboxes, _ = await sup.fault_model.detect(jpeg)
+            info["faults"] = [b for b in fboxes if b["conf"] >= faults.SHOW_CONF]
+    except Exception as e:   # models unavailable: say so, cache nothing
+        return web.json_response({**info, "error": str(e)})
+    try:
+        js.write_text(json.dumps(info), encoding="utf-8")
+    except OSError:
+        pass
+    return web.json_response(info)
 
 
 async def flagged(request: web.Request) -> web.Response:
@@ -248,6 +291,7 @@ async def start(sup) -> web.AppRunner:
         web.post("/api/printers/{name}/detect", set_detect),
         web.get("/api/webcams", webcams),
         web.get("/api/printers/{name}/flagged/{file}", flagged),
+        web.get("/api/printers/{name}/flagged-info/{file}", flagged_info),
         web.get("/api/settings", get_settings),
         web.put("/api/settings", put_settings),
         web.post("/api/scan", scan),
