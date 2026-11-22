@@ -27,7 +27,7 @@ any static web server, or straight from disk.
   to a thin strip; it keeps running). The **Rows** menu in the toolbar
   switches rows on or off; rows switched off stop their streams and polling.
   These apply to every printer alike, and every row is as tall as its
-  tallest copy (smaller content is centred), so rows and columns stay level.
+  tallest copy (smaller content is centered), so rows and columns stay level.
   Card temperature labels shorten to E0/E1/HB when a tile is too narrow.
 - **Fit to window**: **Width** sizes the tiles to fill the window's width in
   one line and lets the page scroll down; **Height** fits everything in the
