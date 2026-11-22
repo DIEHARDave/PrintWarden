@@ -521,10 +521,11 @@
       <option value="1 / 1">1:1</option>
     </select>
   </label>
-  <label>Fit
+  <label title="Whole frame: the full picture, with bars where its shape differs from the tile. Fill tile: fills the tile, cropping the edges. Stretch: fills the tile with the full picture, stretched to the tile's shape.">Fit
     <select id="fit">
       <option value="contain">Whole frame</option>
       <option value="cover">Fill tile</option>
+      <option value="fill">Stretch</option>
     </select>
   </label>
   <label><input id="compact" type="checkbox"> Compact</label>
@@ -1757,7 +1758,8 @@ function renderWatch(t) {
     // What the detectors found on the last checked snapshot, over the live camera
     const [sw, sh] = snap.size;
     t.lov.setAttribute("viewBox", `0 0 ${sw} ${sh}`);
-    t.lov.setAttribute("preserveAspectRatio", view.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet");
+    // Boxes follow the picture: cropped, letterboxed or stretched the same way
+    t.lov.setAttribute("preserveAspectRatio", { cover: "xMidYMid slice", fill: "none" }[view.fit] || "xMidYMid meet");
     t.lov.innerHTML = fail.map((b) =>
       `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#ffd23f" stroke-width="2" vector-effect="non-scaling-stroke"><title>Failure ${Math.round(b.conf * 100)}%</title></rect>`).concat(
       cells.map(([x, y, bw, bh]) =>
