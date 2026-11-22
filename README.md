@@ -37,7 +37,7 @@ any static web server, or straight from disk.
   has its own copy of this page), it reads that server's detection status
   from `api/status`. The detectors' boxes are drawn over each live camera,
   and each printer's AI Monitor card has the timelapse and detection chips
-  (click the detection chip to change it) (yellow spaghetti, red
+  (spaghetti and moved-parts chips, each clicked through off, alert and alert + pause) (yellow spaghetti, red
   dashed moved part, cyan problem type), the failure score and its history,
   the part-position check, the problem types seen, **Not a failure**, and the
   alert history with this print's newest six flagged frames (a link opens all of them) (✎ opens a frame on the server's label
