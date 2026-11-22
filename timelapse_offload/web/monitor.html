@@ -118,12 +118,13 @@
   .rw.rdrop-after { box-shadow: 0 2px 0 var(--accent); }
   /* Collapsed: a thin strip with the row's name instead of the row */
   .rw > .rcol {
-    display: none; align-items: center; min-height: 16px; padding: 0 6px;
+    display: none; min-height: 17px; line-height: 16px; padding: 0 6px;
     border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .rw > .rcol:hover { color: var(--accent); }
   .rw.collapsed > .rbody { display: none; }
-  .rw.collapsed > .rcol { display: flex; }
+  .rw.collapsed > .rcol { display: block; }
   /* Rows switched off in the Rows menu */
   .no-cam .rw[data-row="cam"], .no-screens .rw[data-row="screen"], .no-cards .rw[data-row="card"],
   .no-spools .rw[data-row="spools"], .no-ai .rw[data-row="ai"] { display: none; }
@@ -1092,6 +1093,7 @@ function buildGrid() {
       cstatus: el.querySelector(".cstatus"),
       cfile: el.querySelector(".cfile"),
       cprev: el.querySelector(".cprev"),
+      cardStrip: el.querySelector('.rw[data-row="card"] .rcol'),
       cardBg: "",
       thumb: null,       // { file, url } for the current print file
       heaters: null,     // extruder / chamber objects this printer has
@@ -1280,6 +1282,7 @@ async function pollOne(t) {
     bar.style.width = "0";
     fileEl.textContent = "";
     t.cstatus.textContent = "Disconnected";
+    t.cardStrip.textContent = "▸ Card · Disconnected";
     t.cfile.textContent = "";
     t.cprev.innerHTML = "";
   }
@@ -1334,6 +1337,9 @@ function updateCard(t, s, heaters) {
     draw(level);
     if (!t.cprev.clientWidth || fits()) break;
   }
+  // Folded card row: its status and temperatures on the one-line strip
+  t.cardStrip.textContent = "▸ " + [status, ...items.map(([n, v]) => `${short(n)} ${v.replace("° / ", "/")}`)].join(" · ");
+  t.cardStrip.title = [status, file, ...items.map(([n, v]) => `${n} ${v}`)].filter(Boolean).join(" · ") + " (click to open the card)";
 }
 
 // Finish time. Mainsail averages its file and slicer estimates; same here:
