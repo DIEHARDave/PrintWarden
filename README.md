@@ -50,6 +50,19 @@ any static web server, or straight from disk.
   write-only: it is never shown once saved). Served anywhere else, that
   request fails quietly and the AI Monitor row is not offered.
 
+## Screenshots
+
+Five printers with the AI Monitor row on, served by TimelapseOffload. The
+red dashed boxes on the cameras are the part-position check's changed areas:
+
+![Five printer columns with camera, AI Monitor card, remote screen, print preview, temperatures and spools; red dashed boxes on two cameras](docs/ai-monitor-overview.png)
+
+A moved-part alert: the tile border turns red, the AI Monitor card shows
+"Part moved or came loose" with its flagged frames, and the alert pops up
+on the printer's own screen:
+
+![One printer column during a moved-part alert, with flagged frames in the activity list and a Printer Error dialog on the remote screen](docs/moved-part-alert.png)
+
 ## Setup
 
 1. Put `index.html` on a web server, for example nginx or
