@@ -104,7 +104,7 @@ class FaultModel:
         idx = nms(xyxy + cls[:, None] * 4096.0, conf, NMS_IOU)
         boxes = []
         for i in idx[:30]:
-            x1, y1, x2, y2 = xyxy[i]
+            x1, y1, x2, y2 = (float(v) for v in xyxy[i])   # numpy float32 breaks JSON
             x1, x2 = [min(w0, max(0.0, (v - px) / scale)) for v in (x1, x2)]
             y1, y2 = [min(h0, max(0.0, (v - py) / scale)) for v in (y1, y2)]
             if x2 - x1 < 2 or y2 - y1 < 2:

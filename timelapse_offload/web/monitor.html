@@ -1950,6 +1950,8 @@ function drawThumbs(t) {
 }
 
 let watchMeta = null;   // { interval, model_ready, model_error }
+const WATCH_MAX_FAILS = 3;
+let watchFails = 0;
 async function fetchWatch() {
   const was = watchOn;
   try {
@@ -1962,7 +1964,11 @@ async function fetchWatch() {
       t.watch = data.printers.find((w) => w.host === t.p.host) || null;
       renderWatch(t);
     });
+    watchFails = 0;
   } catch {
+    // One slow or failed check must not make the AI Monitor row vanish mid-print:
+    // keep the last status until several checks in a row have failed
+    if (watchOn && ++watchFails < WATCH_MAX_FAILS) return true;
     if (watchOn) tiles.forEach((t) => { t.watch = null; renderWatch(t); });
     watchOn = false;
   }

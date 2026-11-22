@@ -82,7 +82,21 @@ async def status(request: web.Request) -> web.Response:
         printers.append(s)
     return web.json_response({"printers": printers, "interval": sup.cfg.detection.interval,
                               "model_ready": sup.model._session is not None,
-                              "model_error": sup.model.error})
+                              "model_error": sup.model.error}, dumps=_dumps)
+
+
+def _numpy_plain(o):
+    # A numpy number slipping into the status must not turn it into a 500: the
+    # page then hides the AI Monitor row (2026-11-22, float32 fault boxes)
+    if hasattr(o, "item"):
+        return o.item()
+    if hasattr(o, "tolist"):
+        return o.tolist()
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+
+
+def _dumps(obj) -> str:
+    return json.dumps(obj, default=_numpy_plain)
 
 
 async def snapshot(request: web.Request) -> web.Response:
