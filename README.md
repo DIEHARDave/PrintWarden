@@ -26,21 +26,22 @@ any static web server, or straight from disk.
   grip (drag it onto another row to move it) and a fold arrow (fold the row
   to a thin strip; it keeps running). The **Rows** menu in the toolbar
   switches rows on or off; rows switched off stop their streams and polling.
-  These apply to every printer alike, so the rows stay level.
+  These apply to every printer alike, and every row is as tall as its
+  tallest copy (smaller content is centred), so rows and columns stay level.
+  Card temperature labels shorten to E0/E1/HB when a tile is too narrow.
 - **Fit to window**: **Width** sizes the tiles to fill the window's width in
   one line and lets the page scroll down; **Height** fits everything in the
   window without scrolling.
 - **AI Monitor** (optional): when the page is served by TimelapseOffload
   (the author's timelapse and failure-detection container, not public, which
   has its own copy of this page), it reads that server's detection status
-  from `api/status`. Each printer's AI Monitor card shows the last frame the
-  detectors checked with their boxes drawn on it (the same boxes are drawn
-  over the live camera) (yellow spaghetti, red
+  from `api/status`. The detectors' boxes are drawn over each live camera,
+  and each printer's AI Monitor card has the timelapse and detection chips
+  (click the detection chip to change it) (yellow spaghetti, red
   dashed moved part, cyan problem type), the failure score and its history,
   the part-position check, the problem types seen, **Not a failure**, and the
   alert history with flagged frames (✎ opens a frame on the server's label
-  page for training data). The tile header shows the timelapse and detection
-  modes (click the detection chip to change it), the tile border turns
+  page for training data). The tile border turns
   orange or red on an alert, a camera button on the live camera captures a
   frame for labelling, and **Printers…** gets the server's detection, alert
   and timelapse settings under each printer's row (the Discord webhook is
