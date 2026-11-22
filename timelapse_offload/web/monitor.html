@@ -182,7 +182,7 @@
     pointer-events: none;
   }
   .video .logo.bg-light { background: rgba(255, 255, 255, .78); }
-  .video .logo.bg-dark { background: rgba(0, 0, 0, .55); }
+  .video .logo.bg-dark { background: rgba(8, 8, 8, .92); }
   .video .logo.bg-none { padding: 0; background: none; }
   .video .logo[hidden], .no-logos .video .logo { display: none; }
   /* Detection boxes from the last checked snapshot, over the live video */
@@ -774,10 +774,10 @@ async function loadMainsailMeta(t) {
   t.logo.src = logo;
 }
 
-// Pick the logo's backing from its pixels:
-//   "none"  - corners are opaque, so the logo brings its own background
-//   "dark"  - the drawn parts are mostly light (white wordmarks)
-//   "light" - the drawn parts are mostly dark or colored
+// Auto backing, the same dark box for every logo so they all match:
+//   "none" - corners are opaque, so the logo brings its own (dark) background
+//   "dark" - everything else
+// (Printers… → Logo box can still set Light or None per printer.)
 function logoBacking(img) {
   const W = 64, H = 64;
   try {
@@ -788,21 +788,9 @@ function logoBacking(img) {
     const d = ctx.getImageData(0, 0, W, H).data;
     const alphaAt = (x, y) => d[(y * W + x) * 4 + 3];
     const corners = [alphaAt(0, 0), alphaAt(W - 1, 0), alphaAt(0, H - 1), alphaAt(W - 1, H - 1)];
-    if (corners.every((a) => a > 200)) return "none";
-
-    let sum = 0, n = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i + 3] < 128) continue;
-      // Relative luminance from sRGB, 0 (black) .. 1 (white)
-      const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
-      sum += 0.2126 * lin(d[i]) + 0.7152 * lin(d[i + 1]) + 0.0722 * lin(d[i + 2]);
-      n++;
-    }
-    if (!n) return "light";
-    return sum / n > 0.5 ? "dark" : "light";
+    return corners.every((a) => a > 200) ? "none" : "dark";
   } catch {
-    // Pixels unreadable (no CORS): a light box suits most logos
-    return "light";
+    return "dark";   // pixels unreadable (no CORS)
   }
 }
 function applyLogoBacking(t) {
@@ -1134,7 +1122,17 @@ function buildGrid() {
     el.querySelector(".shield")?.addEventListener("click", () => openScreenZoom(t));
     t.ssync.addEventListener("click", () => syncSpools(t));
     t.logo.addEventListener("load", () => { applyLogoBacking(t); t.logo.hidden = false; });
-    t.logo.addEventListener("error", () => { t.logo.hidden = true; });
+    t.logo.addEventListener("error", () => {
+      // The logo is loaded with CORS (its pixels pick the backing). A copy the
+      // browser cached from Mainsail without CORS fails here: try once uncached.
+      const src = t.logo.getAttribute("src") || "";
+      if (src && !t.logo.dataset.retried) {
+        t.logo.dataset.retried = "1";
+        t.logo.src = src + (src.includes("?") ? "&" : "?") + "_=" + Date.now();
+        return;
+      }
+      t.logo.hidden = true;
+    });
     t.clogo.addEventListener("load", () => { t.clogo.hidden = false; });
     t.clogo.addEventListener("error", () => { t.clogo.hidden = true; });
     setName(t);
