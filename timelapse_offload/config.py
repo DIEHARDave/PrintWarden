@@ -38,15 +38,17 @@ class Printer:
     sync_suffixes: list[str] = field(default_factory=lambda: [".mp4", "_cover.jpg"])
     delete_after_sync: bool = False
     # --- failure detection ---
-    # "off", "alert" (notify only) or "pause" (notify and pause the print).
+    # Spaghetti (Obico model): "off", "alert" (notify only) or "pause" (notify and
+    # pause the print).
     detect: str = "off"
     # Webcam name from Moonraker's webcam list; empty = first camera with snapshots.
     webcam: str = ""
     # Obico's "detective sensitivity": higher flags failures sooner (0.5..2).
     sensitivity: float = 1.0
-    # Also watch for a part that moved, tipped over or came off the bed
-    # (compares the scene with a few minutes earlier); same alert/pause action.
-    motion: bool = True
+    # Moved parts: a part that moved, tipped over or came off the bed (compares the
+    # scene with a few minutes earlier). Its own "off" / "alert" / "pause"; the old
+    # true/false meant "follow detect" and now reads as "alert" / "off".
+    motion: str = "alert"
     # Higher flags smaller changes (0.1..5).
     motion_sensitivity: float = 1.0
 
@@ -159,8 +161,12 @@ def parse_printer(raw: dict) -> Printer:
     p.port = int(p.port)
     p.sensitivity = float(p.sensitivity)
     p.motion_sensitivity = float(p.motion_sensitivity)
-    if isinstance(p.motion, str):
-        p.motion = p.motion.strip().lower() in ("1", "true", "yes", "on")
+    m = p.motion
+    if isinstance(m, bool) or str(m).strip().lower() in ("1", "0", "true", "false", "yes", "no", "on"):
+        m = "alert" if (m is True or str(m).strip().lower() in ("1", "true", "yes", "on")) else "off"
+    p.motion = str(m).strip().lower()
+    if p.motion not in DETECT_MODES:
+        raise ValueError(f"{name}: moved parts must be one of {', '.join(DETECT_MODES)}")
     if p.mode not in TIMELAPSE_MODES:
         raise ValueError(f"{name}: mode must be one of {', '.join(TIMELAPSE_MODES)}")
     if p.fetch not in ("files", "zip"):

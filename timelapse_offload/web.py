@@ -199,19 +199,22 @@ async def put_settings(request: web.Request) -> web.Response:
 
 
 async def set_detect(request: web.Request) -> web.Response:
-    """Change one printer's detection mode (the chip on Printer Monitor's tiles)."""
+    """Change one printer's spaghetti ({"detect": ...}) or moved-part ({"motion": ...})
+    mode: off, alert or pause (the chips on Printer Monitor's AI Monitor card)."""
     sup = request.app["sup"]
     name = request.match_info["name"]
     try:
-        detect = str((await request.json()).get("detect", ""))
+        body = await request.json()
     except ValueError:
-        detect = ""
+        body = {}
+    field = "motion" if "motion" in body else "detect"
+    detect = str(body.get(field, ""))
     if detect not in ("off", "alert", "pause"):
-        return web.json_response({"error": "detect must be off, alert or pause"}, status=400)
+        return web.json_response({"error": f"{field} must be off, alert or pause"}, status=400)
     data = config.settings_dict(sup.cfg)
     for p in data["printers"]:
         if p["name"] == name:
-            p["detect"] = detect
+            p[field] = detect
             break
     else:
         raise web.HTTPNotFound(text="no such printer")
@@ -220,8 +223,9 @@ async def set_detect(request: web.Request) -> web.Response:
     except (ValueError, TypeError) as e:
         return web.json_response({"error": str(e)}, status=400)
     sup.apply()
-    log.info("%s: detection set to %s from the web page", name, detect)
-    return web.json_response({"ok": True, "detect": detect})
+    log.info("%s: %s set to %s from the web page", name,
+             "moved parts" if field == "motion" else "spaghetti detection", detect)
+    return web.json_response({"ok": True, field: detect})
 
 
 async def probe(session: aiohttp.ClientSession, host: str, port: int) -> dict | None:

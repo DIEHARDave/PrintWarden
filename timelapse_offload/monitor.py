@@ -206,7 +206,8 @@ class Detector:
             try:
                 await self.poll_state()
                 self.online = True
-                if self.state == "printing" and self.printer.detect != "off":
+                if self.state == "printing" and (self.printer.detect != "off"
+                                                 or self.printer.motion != "off"):
                     await self.check()
                     self.error = ""
                 wait = self.cfg.detection.interval if self.state in ACTIVE else IDLE_POLL
@@ -242,7 +243,7 @@ class Detector:
         score = self.pred.normalized(sens)
         self.history.append((round(snap.taken), round(score, 3)))
         mres = None
-        if self.printer.motion:
+        if self.printer.motion != "off":
             was = self.motion.last.state
             mres = await asyncio.to_thread(self.motion.update, snap.jpeg, snap.taken, size,
                                            self.printer.motion_sensitivity, self.pos)
@@ -251,7 +252,10 @@ class Detector:
             if mres.state == "candidate" and was != "candidate":
                 self.log.info("motion: possible move (area %.3f)", mres.area)
                 self.event("motion", "Something changed on the bed; checking it stays")
-        await self.check_faults(snap)
+        if self.printer.detect != "off":
+            await self.check_faults(snap)
+        else:
+            self.fault_boxes, self.fault_streak = [], {}
         if self.ignored:
             return
         for label, n in self.fault_streak.items():
@@ -267,13 +271,15 @@ class Detector:
             self.moved = True
             self.log.warning("part moved (area %.3f)", mres.area)
             before = self.motion.before_jpeg
-            if self.printer.detect == "pause" and not self.paused_by_us:
+            if self.printer.motion == "pause" and not self.paused_by_us:
                 self.paused_by_us = True
                 await self.pause(snap, "moved", "Print paused: a part moved or came loose",
                                  before)
             else:
                 await self.alert(snap, "moved", "A part moved or came loose", 0xD83C3E,
                                  before)
+            return
+        if self.printer.detect == "off":
             return
         failing = self.pred.failing(sens, ESCALATING_FACTOR)
         warning = self.pred.failing(sens)
@@ -372,12 +378,13 @@ class Detector:
         sens = p.sensitivity
         score = self.pred.normalized(sens) if self.pred.current_frame_num else 0.0
         level = "ok"
-        if self.state == "printing" and p.detect != "off":
-            if self.pred.failing(sens, ESCALATING_FACTOR) or self.moved:
+        spaghetti = p.detect != "off"
+        if self.state == "printing" and (spaghetti or p.motion != "off"):
+            if (spaghetti and self.pred.failing(sens, ESCALATING_FACTOR)) or self.moved:
                 level = "failing"
-            elif self.pred.failing(sens):
+            elif spaghetti and self.pred.failing(sens):
                 level = "warning"
-            elif self.pred.current_frame_num < detect.INIT_SAFE_FRAME_NUM:
+            elif spaghetti and self.pred.current_frame_num < detect.INIT_SAFE_FRAME_NUM:
                 level = "warming"
         # score_level: the spaghetti model alone; level also counts the trial problem-type alerts
         score_level = level
@@ -385,6 +392,7 @@ class Detector:
             level = "warning"
         return {
             "name": p.name, "host": p.host, "mode": p.mode, "detect": p.detect,
+            "motion_mode": p.motion,
             "stream": stream_url(p, pick_webcam(self.cams, p.webcam)),
             "online": self.online, "error": self.error or self.model.error,
             "state": self.state, "filename": self.filename, "progress": self.progress,
@@ -394,12 +402,12 @@ class Detector:
             "frames": self.pred.current_frame_num,
             "safe_frames": detect.INIT_SAFE_FRAME_NUM,
             "snapshot": None if self.snap is None else {
-                "t": self.snap.taken, "size": self.snap.size, "boxes": [
+                "t": self.snap.taken, "size": self.snap.size, "boxes": [] if not spaghetti else [
                     b for b in self.snap.boxes if b["conf"] >= detect.VISUALIZATION_THRESH]},
             "history": list(self.history),
             "events": list(self.events),
             "infer_ms": round(self.infer_seconds * 1000),
-            "motion": None if not p.motion else {
+            "motion": None if p.motion == "off" else {
                 "state": "moved" if self.moved else self.motion.last.state,
                 "score": round(min(self.motion.last.score, 9.99), 2),
                 "cells": self.motion.last.cells if self.motion.last.score >= 0.5 else []},

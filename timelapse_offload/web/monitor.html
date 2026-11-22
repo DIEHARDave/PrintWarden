@@ -556,7 +556,7 @@
   <label class="spoolman-url">Spoolman <input type="text" id="spoolmanUrl" placeholder="http://10.0.1.206:7912 (empty = off)"></label>
   <section id="pwSet" hidden>
     <h2>Detection, alerts and timelapses</h2>
-    <p>Each printer's row above has its server settings under it: tick <b>Watch</b> to have the TimelapseOffload server handle it. Timelapse: <b>Render frames</b> renders moonraker-timelapse frames on the server; <b>Copy videos</b> copies finished videos from printers that render on-device (Snapmaker U1). Detection: <b>Alert</b> notifies; <b>Alert + pause</b> also pauses the print. These live on the server, so they apply to everyone, and Save applies them at once. <span id="pwModel"></span></p>
+    <p>Each printer's row above has its server settings under it: tick <b>Watch</b> to have the TimelapseOffload server handle it. Timelapse: <b>Render frames</b> renders moonraker-timelapse frames on the server; <b>Copy videos</b> copies finished videos from printers that render on-device (Snapmaker U1). <b>Spaghetti</b> (Obico's model) and <b>Moved parts</b> each have their own setting: <b>Alert</b> notifies; <b>Alert + pause</b> also pauses the print. These live on the server, so they apply to everyone, and Save applies them at once. <span id="pwModel"></span></p>
     <div class="actions">
       <input id="pwSubnet" style="width:150px" placeholder="10.0.1.0/24">
       <button type="button" id="pwScan" title="Look for Moonraker on port 7125 across the subnet">Find printers</button>
@@ -1749,7 +1749,7 @@ function watchAgo(t) {
 }
 function renderWatch(t) {
   const w = t.watch;
-  const watching = !!w && w.detect !== "off" && (w.state === "printing" || w.state === "paused");
+  const watching = watchingOn(w) && (w.state === "printing" || w.state === "paused");
   const snap = watching ? w.snapshot : null;
   const moved = w?.motion?.state === "moved";
   const level = !watching || w.ignored ? "" : moved ? "failing" : w.level;
@@ -1782,7 +1782,7 @@ function renderWatch(t) {
 
   let text;
   if (!w) text = "Not watched by the server";
-  else if (!watching) text = w.detect === "off" ? "Detection is off for this printer" : "Watching starts when a print starts";
+  else if (!watching) text = !watchingOn(w) ? "Detection is off for this printer" : "Watching starts when a print starts";
   else if (w.ignored) text = "Not a failure (this print)";
   else if (moved) text = "Part moved or came loose";
   else if (w.faults?.alerted?.length) text = "Possible " + w.faults.alerted.map((k) => (FAULT_NAMES[k] || k).toLowerCase()).join(", ");
@@ -1801,26 +1801,37 @@ const FAULT_NAMES = { spaghetti: "Spaghetti", detached: "Part loose", layer_shif
   stringing: "Stringing", under_extrusion: "Under-extrusion", over_extrusion: "Over-extrusion", blob: "Blob",
   cracks: "Cracks", other: "Problem" };
 const TL_CHIP = { frames: "timelapse", sync: "timelapse copy" };
-const DETECT_CHIP = { off: "detect off", alert: "detect + alert", pause: "detect + pause" };
+// Two detectors, each off / alert / alert + pause: spaghetti (Obico) and moved parts
+const DETECT_KINDS = {
+  detect: { word: "spaghetti", what: "Spaghetti detection (Obico)" },
+  motion: { word: "moved", what: "Moved-part detection" },
+};
+const MODE_TEXT = { off: "off", alert: "+ alert", pause: "+ pause" };
 const DETECT_NEXT = { off: "alert", alert: "pause", pause: "off" };
+const modeOf = (w, kind) => (kind === "motion" ? w.motion_mode : w.detect) || "off";
+const watchingOn = (w) => !!w && (w.detect !== "off" || (w.motion_mode || "off") !== "off");
 function renderChips(t) {
   const w = t.watch;
   if (!w) { t.wchips.innerHTML = ""; return; }
   const tl = TL_CHIP[w.mode];
   t.wchips.innerHTML = (tl ? `<span class="wchip tl" title="Timelapse: ${w.mode === "sync" ? "finished videos are copied off the printer" : "frames are rendered on the server"}">${tl}</span>` : "")
-    + `<button type="button" class="wchip ${esc(w.detect)}" title="Failure detection. Click to switch to ${esc(DETECT_CHIP[DETECT_NEXT[w.detect]] || "")}">${esc(DETECT_CHIP[w.detect] || w.detect)}</button>`;
+    + Object.entries(DETECT_KINDS).map(([kind, k]) => {
+      const m = modeOf(w, kind);
+      return `<button type="button" class="wchip ${esc(m)}" data-kind="${kind}" title="${k.what}: ${m === "off" ? "off" : m === "pause" ? "alerts and pauses the print" : "alerts only"}. Click for ${esc(k.word)} ${esc(MODE_TEXT[DETECT_NEXT[m]])}.">${esc(k.word)} ${esc(MODE_TEXT[m] || m)}</button>`;
+    }).join("");
 }
 async function cycleDetect(t, btn) {
   const w = t.watch;
   if (!w) return;
-  const next = DETECT_NEXT[w.detect] || "alert";
+  const kind = btn.dataset.kind === "motion" ? "motion" : "detect";
+  const next = DETECT_NEXT[modeOf(w, kind)] || "alert";
   btn.disabled = true;
   try {
     const res = await fetch(`api/printers/${encodeURIComponent(w.name)}/detect`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ detect: next }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [kind]: next }),
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.status);
-    w.detect = next;
+    if (kind === "motion") w.motion_mode = next; else w.detect = next;
   } catch (e) {
     alert("Could not change detection: " + e.message);
   }
@@ -1847,7 +1858,7 @@ const MOTION_TEXT = { learning: ["Learning the scene", "text"], ok: ["Not moved"
 function renderRow(t) {
   const w = t.watch;
   if (!w) { t.aibody.hidden = true; t.aibody.innerHTML = ""; t.aiact.hidden = true; t.aiact.innerHTML = ""; t.aiact.dataset.html = ""; return; }
-  const watching = w.detect !== "off" && (w.state === "printing" || w.state === "paused");
+  const watching = watchingOn(w) && (w.state === "printing" || w.state === "paused");
   const parts = [];
   if (watching) {
     const lvl = w.score_level || w.level, score = Math.round((w.score || 0) * 100);
@@ -1982,7 +1993,7 @@ const pwOpts = (list, v) => list.map(([k, l]) => `<option value="${k}"${k === v 
 function pwBlank(host = "", name = "") {
   return { name, host, port: 7125, api_key: "", mode: "frames", fetch: "files", zip_root: "timelapse",
     sync_root: "timelapse", sync_suffixes: [".mp4", "_cover.jpg"], delete_after_sync: false,
-    detect: "alert", webcam: "", sensitivity: 1.0, motion: true, motion_sensitivity: 1.0 };
+    detect: "alert", webcam: "", sensitivity: 1.0, motion: "alert", motion_sensitivity: 1.0 };
 }
 function wsubHtml(host) {
   const w = pwSettings.printers.find((p) => p.host === host);
@@ -1990,9 +2001,9 @@ function wsubHtml(host) {
   return `<div class="wsub${w ? "" : " off"}" data-whost="${esc(w ? host : "")}">
     <label class="won" title="Let the server render this printer's timelapses and watch its prints"><input type="checkbox" data-w="on"${w ? " checked" : ""}> Watch</label>
     <label>Timelapse<select data-w="mode">${pwOpts(PW_TL, p.mode)}</select></label>
-    <label>Detection<select data-w="detect">${pwOpts(PW_DT, p.detect)}</select></label>
+    <label title="Obico's spaghetti model">Spaghetti<select data-w="detect">${pwOpts(PW_DT, p.detect)}</select></label>
     <label title="Raise to catch failures sooner, lower if this printer gives false alarms">Sensitivity<input type="number" data-w="sensitivity" step="0.1" min="0.1" max="5" value="${esc(p.sensitivity)}"></label>
-    <label>Moved parts<select data-w="motion">${pwOpts([["true", "Watch"], ["false", "Off"]], String(p.motion))}</select></label>
+    <label title="A part that moved, tipped over or came off the bed">Moved parts<select data-w="motion">${pwOpts(PW_DT, typeof p.motion === "boolean" ? (p.motion ? "alert" : "off") : p.motion)}</select></label>
     <label>Moved sensitivity<input type="number" data-w="motion_sensitivity" step="0.1" min="0.1" max="5" value="${esc(p.motion_sensitivity)}"></label>
     <button type="button" data-wmore title="More server options">⋯</button>
     <div class="wmore">
@@ -2135,7 +2146,7 @@ function pwReadPrinters() {
       let v = el.value.trim();
       if (k === "port") v = Number(v) || 7125;
       if (k === "sensitivity" || k === "motion_sensitivity") v = Number(v) || 1;
-      if (k === "motion" || k === "delete_after_sync") v = v === "true";
+      if (k === "delete_after_sync") v = v === "true";
       p[k] = v;
     });
     const cam = r.querySelector('[data-pick="cam"]').value;

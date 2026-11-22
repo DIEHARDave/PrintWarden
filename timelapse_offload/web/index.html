@@ -405,7 +405,7 @@ function prow(p, i) {
     <label class="f">Detection<select data-k="detect">${opts(DT, p.detect)}</select></label>
     <label class="f">Webcam<select data-k="webcam"><option value="">First camera</option>${p.webcam ? `<option selected value="${esc(p.webcam)}">${esc(p.webcam)}</option>` : ""}</select></label>
     <label class="f">Sensitivity<input data-k="sensitivity" type="number" step="0.1" min="0.1" max="5" value="${esc(p.sensitivity)}"></label>
-    <label class="f">Moved parts<select data-k="motion">${opts([["true", "Watch"], ["false", "Off"]], String(p.motion))}</select></label>
+    <label class="f">Moved parts<select data-k="motion">${opts(DT, p.motion)}</select></label>
     <div><button class="icon" data-more title="More options">⋯</button><button class="icon" data-del title="Remove">✕</button></div>
     <div class="more">
       <label class="f">Moved-part sensitivity<input data-k="motion_sensitivity" type="number" step="0.1" min="0.1" max="5" value="${esc(p.motion_sensitivity)}"></label>
@@ -453,7 +453,6 @@ $("#plist").addEventListener("input", ev => {
   let v = ev.target.value;
   if (k === "port") v = Number(v) || 7125;
   if (k === "sensitivity" || k === "motion_sensitivity") v = Number(v) || 1;
-  if (k === "motion") v = v === "true";
   if (k === "delete_after_sync") v = v === "true";
   p[k] = v; markDirty();
 });
@@ -473,7 +472,7 @@ $("#plist").addEventListener("click", ev => {
 function blank(host = "", name = "") {
   return { name, host, port: 7125, api_key: "", mode: "frames", fetch: "files", zip_root: "timelapse",
     sync_root: "timelapse", sync_suffixes: [".mp4", "_cover.jpg"], delete_after_sync: false,
-    detect: "alert", webcam: "", sensitivity: 1.0, motion: true, motion_sensitivity: 1.0 };
+    detect: "alert", webcam: "", sensitivity: 1.0, motion: "alert", motion_sensitivity: 1.0 };
 }
 $("#add").onclick = () => { settings.printers.push(blank()); markDirty(); drawSettings();
   $(`.prow[data-i="${settings.printers.length - 1}"] input`).focus(); };
