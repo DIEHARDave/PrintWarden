@@ -1554,7 +1554,7 @@ function renderWatch(t) {
   renderRow(t);
   if (!watching) { t.ov.innerHTML = ""; t.wbadge.hidden = true; return; }
 
-  const fail = snap?.boxes || [], cells = w.motion?.cells || [];
+  const fail = snap?.boxes || [], cells = w.motion?.cells || [], types = w.faults?.boxes || [];
   if (snap && snap.size?.[0]) {
     const [sw, sh] = snap.size;
     t.ov.setAttribute("viewBox", `0 0 ${sw} ${sh}`);
@@ -1562,7 +1562,13 @@ function renderWatch(t) {
     t.ov.innerHTML = fail.map((b) =>
       `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#ffd23f" stroke-width="2" vector-effect="non-scaling-stroke"><title>Failure ${Math.round(b.conf * 100)}%</title></rect>`).concat(
       cells.map(([x, y, bw, bh]) =>
-      `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="rgba(255,80,80,.14)" stroke="#ff5050" stroke-dasharray="5 4" stroke-width="2" vector-effect="non-scaling-stroke"><title>Changed since a few minutes ago</title></rect>`)).join("");
+      `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="rgba(255,80,80,.14)" stroke="#ff5050" stroke-dasharray="5 4" stroke-width="2" vector-effect="non-scaling-stroke"><title>Changed since a few minutes ago</title></rect>`)).concat(
+      // Problem-type model (trial): cyan boxes named after the type
+      types.map((b) => {
+        const fs = Math.max(14, sw / 45), name = FAULT_NAMES[b.label] || b.label;
+        return `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#36cfc9" stroke-width="2" vector-effect="non-scaling-stroke"><title>${esc(name)} ${Math.round(b.conf * 100)}% (problem-type detector, trial)</title></rect>`
+          + `<text x="${b.x + 3}" y="${Math.max(fs, b.y - 4)}" font-size="${fs}" fill="#36cfc9" stroke="#000" stroke-width="${fs / 5}" paint-order="stroke" font-family="system-ui, sans-serif" font-weight="600">${esc(name)} ${Math.round(b.conf * 100)}%</text>`;
+      })).join("");
   } else {
     t.ov.innerHTML = "";
   }
@@ -1570,17 +1576,22 @@ function renderWatch(t) {
   let text;
   if (w.ignored) text = "Watch: not a failure";
   else if (moved) text = "Part moved or came loose";
+  else if (w.faults?.alerted?.length) text = "Possible " + w.faults.alerted.map((k) => (FAULT_NAMES[k] || k).toLowerCase()).join(", ");
   else if (!w.frames) text = w.state === "paused" ? "Watch: paused" : "Watch: starting";
   else if (w.level === "warming") text = `Watch: learning ${w.frames}/${w.safe_frames}`;
   else text = `${WATCH_LEVEL[w.level] || w.level} · ${Math.round((w.score || 0) * 100)}%`;
   if (!moved && w.motion?.state === "candidate") text += " · part changed?";
   t.wbadge.textContent = text;
   t.wbadge.className = "wbadge " + level;
-  t.wbadge.title = (fail.length || cells.length ? `Boxes from the snapshot checked ${watchAgo(snap.t)} ago. ` : "")
+  t.wbadge.title = (fail.length || cells.length || types.length ? `Boxes from the snapshot checked ${watchAgo(snap.t)} ago. ` : "")
     + "Open Print Watch for details.";
   t.wbadge.hidden = false;
 }
 
+// Problem types from the server's own detector (same keys as its training labels)
+const FAULT_NAMES = { spaghetti: "Spaghetti", detached: "Part loose", layer_shift: "Layer shift", warping: "Warping",
+  stringing: "Stringing", under_extrusion: "Under-extrusion", over_extrusion: "Over-extrusion", blob: "Blob",
+  cracks: "Cracks", other: "Problem" };
 const TL_CHIP = { frames: "timelapse", sync: "timelapse copy" };
 const DETECT_CHIP = { off: "detect off", alert: "detect + alert", pause: "detect + pause" };
 const DETECT_NEXT = { off: "alert", alert: "pause", pause: "off" };
@@ -1632,7 +1643,7 @@ function renderRow(t) {
   const watching = w.detect !== "off" && (w.state === "printing" || w.state === "paused");
   const parts = [];
   if (watching) {
-    const lvl = w.level, score = Math.round((w.score || 0) * 100);
+    const lvl = w.score_level || w.level, score = Math.round((w.score || 0) * 100);
     const col = lvl === "failing" ? "err" : lvl === "warning" ? "warn" : "text";
     const val = !w.frames ? (w.state === "paused" ? "Waiting for resume" : "Starting")
       : lvl === "warming" ? `Learning ${w.frames}/${w.safe_frames}` : `${score}% · ${WATCH_LEVEL[lvl] || lvl}`;
@@ -1642,6 +1653,13 @@ function renderRow(t) {
       const [txt, mcol] = MOTION_TEXT[w.motion.state] || MOTION_TEXT.ok;
       const pct = Math.round(Math.min(1, w.motion.score || 0) * 100);
       parts.push(`<div class="wline"><span class="lbl">Part position</span><div class="meter"><i style="left:${Math.min(99.5, pct)}%"></i></div><span class="val" style="color:var(--${mcol})">${esc(w.motion.state === "learning" ? txt : `${pct}% · ${txt}`)}</span></div>`);
+    }
+    if (w.faults) {
+      const seen = {};
+      (w.faults.boxes || []).forEach((b) => { seen[b.label] = Math.max(seen[b.label] || 0, b.conf); });
+      const list = Object.entries(seen).sort((a, b) => b[1] - a[1])
+        .map(([k, c]) => `${esc(FAULT_NAMES[k] || k)} ${Math.round(c * 100)}%${w.faults.streak?.[k] > 1 ? ` ×${w.faults.streak[k]}` : ""}`);
+      parts.push(`<div class="wline" title="Our own problem-type detector (trial): alerts when a type stays above ${Math.round((w.faults.alert_conf || 0.5) * 100)}% for ${w.faults.alert_streak || 3} checks in a row; it never pauses"><span class="lbl">Problem types</span><span class="wmuted" style="grid-column: span 2">${list.length ? list.join(" · ") : "none seen"}</span></div>`);
     }
     if (w.ignored) parts.push('<div class="wmuted">Marked as not a failure for this print.</div>');
     else parts.push('<div class="wact"><button type="button" class="wignore" title="Stop alerts for the rest of this print">Not a failure</button></div>');

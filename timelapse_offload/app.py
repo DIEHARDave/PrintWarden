@@ -14,6 +14,7 @@ import aiohttp
 from . import render
 from .config import Config, Printer
 from .detect import Model, PredictionStore
+from .faults import FaultModel
 from .moonraker import (SAVED_FRAMES_SUFFIX, VIDEOS_ROOT, Moonraker, MoonrakerError,
                         extract_frames)
 from .monitor import Detector, Notifier
@@ -420,6 +421,7 @@ class Supervisor:
         self.state = State(cfg.state_file)
         self.slots = asyncio.Semaphore(cfg.max_parallel_renders)
         self.model = Model(cfg.detection.model_dir, cfg.detection.threads)
+        self.fault_model = FaultModel(cfg.detection.model_dir, cfg.detection.threads)
         self.store = PredictionStore(cfg.state_file.with_name("detect_state.json"))
         self.notifier = Notifier(cfg, session)
         self.watchers: dict[str, tuple[Printer, asyncio.Task]] = {}
@@ -429,6 +431,7 @@ class Supervisor:
     def apply(self) -> None:
         """Bring running tasks in line with cfg.printers."""
         self.model.threads = self.cfg.detection.threads
+        self.fault_model.threads = self.cfg.detection.threads
         wanted = {p.name: p for p in self.cfg.printers}
         for name in list(self.watchers):
             old, task = self.watchers[name]
@@ -453,7 +456,8 @@ class Supervisor:
                 w = Watcher(p, self.cfg, self.state, self.session, self.slots)
                 self.watchers[name] = (p, asyncio.create_task(w.run(), name=f"tl:{name}"))
             if name not in self.detectors:
-                d = Detector(p, self.cfg, self.session, self.model, self.store, self.notifier)
+                d = Detector(p, self.cfg, self.session, self.model, self.store, self.notifier,
+                             self.fault_model)
                 self.detectors[name] = (d, asyncio.create_task(d.run(), name=f"det:{name}"))
         if any(p.detect != "off" for p in self.cfg.printers) and self.model._session is None                 and (self._warming is None or self._warming.done()):
             self._warming = asyncio.create_task(self.model.warm())

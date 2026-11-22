@@ -86,6 +86,12 @@ There are two pages:
 
 The page has no login; keep the port on your LAN, like Moonraker itself.
 
+### Problem types (trial)
+
+A second model, trained by us (`tools/train_detector.py` on public CC BY 4.0 Roboflow sets plus frames labelled here), boxes spaghetti, stringing, under- and over-extrusion, warping, blobs, cracks and loose parts on the same snapshots. It is optional: put the exported ONNX at `/data/models/faults.onnx` (a new file is picked up at the next check) and remove it to turn it off. It is in trial: it only alerts, never pauses, once a type stays above 50% for 3 checks in a row, once per type per print, and "Not a failure" silences it like the rest. Printer Monitor draws its boxes in cyan with the type and confidence, and the detection row lists what it sees now. About 0.2 s per check on a 2-vCPU host.
+
+`tools/check_false_alarms.py` runs a model over our own timelapse videos and reports how often it would have flagged a frame; anything it finds on a good print is a false alarm, and those frames belong on the label page as "looks fine" before the next training run.
+
 ## Training data
 
 To build our own failure examples, the camera button at the bottom right of each watched printer's camera on Printer Monitor takes a fresh frame from that printer and opens it on the label page (`/label/`) in a new tab. Drag boxes round problems and pick their type (spaghetti, part came loose or moved, layer shift, warping, stringing, under-extrusion, over-extrusion, blob, cracks, other; keys 1–9 and 0), say whether the frame shows a problem, looks fine or you are not sure, add a note and save. The ✎ on a flagged frame in the Activity list copies that alert frame to the label page, which is how false alarms get recorded.

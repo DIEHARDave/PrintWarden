@@ -9,7 +9,7 @@ from pathlib import Path
 
 import aiohttp
 
-from . import detect, motion
+from . import detect, faults, motion, training
 from .config import Config, Printer
 from .detect import ESCALATING_FACTOR, Model, Prediction, PredictionStore, Snapshot
 from .moonraker import Moonraker, MoonrakerError
@@ -98,7 +98,8 @@ class Detector:
     """One printer: polls print state, grabs snapshots, scores them, alerts/pauses."""
 
     def __init__(self, printer: Printer, cfg: Config, session: aiohttp.ClientSession,
-                 model: Model, store: PredictionStore, notifier: Notifier):
+                 model: Model, store: PredictionStore, notifier: Notifier,
+                 fault_model: faults.FaultModel | None = None):
         self.printer = printer
         self.cfg = cfg
         self.session = session
@@ -126,6 +127,12 @@ class Detector:
         self.motion = motion.MotionWatch()
         self.moved = False
         self.pos: tuple[float, float] | None = None
+        # Problem-type model (trial): current boxes, checks in a row per type, types alerted
+        self.faults = fault_model
+        self.fault_boxes: list[dict] = []
+        self.fault_streak: dict[str, int] = {}
+        self.fault_alerted: set[str] = set()
+        self.fault_seconds = 0.0
         self.wake = asyncio.Event()
 
     # --- printer access ---
@@ -171,6 +178,8 @@ class Detector:
                 # Resumed after an alert: the person looked and decided to carry on.
                 self.pred.reset_print()
                 self.warned = self.failed = self.paused_by_us = self.moved = False
+                self.fault_streak.clear()
+                self.fault_alerted.clear()
                 self.event("resumed", "Resumed; watching again after a short grace period")
 
     def new_print(self) -> None:
@@ -178,6 +187,7 @@ class Detector:
         self.history.clear()
         self.ignored = self.warned = self.failed = self.paused_by_us = self.moved = False
         self.motion.reset()
+        self.fault_boxes, self.fault_streak, self.fault_alerted = [], {}, set()
         self.event("start", f"Print started: {self.filename}")
 
     def event(self, kind: str, text: str) -> None:
@@ -235,8 +245,18 @@ class Detector:
             if mres.state == "candidate" and was != "candidate":
                 self.log.info("motion: possible move (area %.3f)", mres.area)
                 self.event("motion", "Something changed on the bed; checking it stays")
+        await self.check_faults(snap)
         if self.ignored:
             return
+        for label, n in self.fault_streak.items():
+            if n >= faults.ALERT_STREAK and label not in self.fault_alerted:
+                self.fault_alerted.add(label)
+                conf = max(b["conf"] for b in self.fault_boxes if b["label"] == label)
+                name = training.LABELS.get(label, label)
+                await self.alert(snap, "fault", f"Possible problem: {name}", 0xE8A33D, text=(
+                    f"{self.filename or 'print'} at {self.progress * 100:.0f}%. The problem-type "
+                    f"detector (trial) saw {name.lower()} on {n} checks in a row, now {conf * 100:.0f}%. "
+                    "It only alerts; it never pauses a print."))
         if mres is not None and mres.state == "moved" and not self.moved:
             self.moved = True
             self.log.warning("part moved (area %.3f)", mres.area)
@@ -261,6 +281,23 @@ class Detector:
             self.warned = True
             await self.alert(snap, "warning", "Possible print failure", 0xE8A33D)
 
+    async def check_faults(self, snap: Snapshot) -> None:
+        if self.faults is None or not self.faults.available:
+            self.fault_boxes = []
+            return
+        try:
+            boxes, self.fault_seconds = await self.faults.detect(snap.jpeg)
+        except Exception as e:
+            self.log.warning("problem-type model: %s", e)
+            self.fault_boxes = []
+            return
+        self.fault_boxes = boxes
+        hot = {b["label"] for b in boxes if b["conf"] >= faults.ALERT_CONF}
+        self.fault_streak = {k: self.fault_streak.get(k, 0) + 1 for k in hot}
+        for k, n in self.fault_streak.items():
+            if n == 1:
+                self.log.info("problem type %s above %.0f%%", k, faults.ALERT_CONF * 100)
+
     def save(self, kind: str, snap: Snapshot, before: bytes | None) -> None:
         folder = self.cfg.detection.flagged_dir / self.printer.name
         if before is not None:
@@ -268,13 +305,13 @@ class Detector:
         detect.save_flagged(folder, kind, snap)
 
     async def alert(self, snap: Snapshot, kind: str, title: str, color: int,
-                    before: bytes | None = None) -> None:
+                    before: bytes | None = None, text: str = "") -> None:
         self.log.warning("%s (score %.2f)", title.lower(), self.pred.normalized(
             self.printer.sensitivity))
         self.save(kind, snap, before)
         self.event(kind, title)
         await self.notifier.send(self.mr, f"{self.printer.name}: {title}",
-                                 self.describe(kind), color, snap, before)
+                                 text or self.describe(kind), color, snap, before)
 
     async def pause(self, snap: Snapshot, kind: str = "paused",
                     title: str = "Print paused: likely failure",
@@ -318,12 +355,17 @@ class Detector:
                 level = "warning"
             elif self.pred.current_frame_num < detect.INIT_SAFE_FRAME_NUM:
                 level = "warming"
+        # score_level: the spaghetti model alone; level also counts the trial problem-type alerts
+        score_level = level
+        if level in ("ok", "warming") and self.fault_alerted and not self.ignored                 and self.state == "printing" and p.detect != "off":
+            level = "warning"
         return {
             "name": p.name, "host": p.host, "mode": p.mode, "detect": p.detect,
             "stream": stream_url(p, pick_webcam(self.cams, p.webcam)),
             "online": self.online, "error": self.error or self.model.error,
             "state": self.state, "filename": self.filename, "progress": self.progress,
-            "score": round(score, 3), "level": level, "ignored": self.ignored,
+            "score": round(score, 3), "level": level, "score_level": score_level,
+            "ignored": self.ignored,
             "frames": self.pred.current_frame_num,
             "safe_frames": detect.INIT_SAFE_FRAME_NUM,
             "snapshot": None if self.snap is None else {
@@ -336,6 +378,11 @@ class Detector:
                 "state": "moved" if self.moved else self.motion.last.state,
                 "score": round(min(self.motion.last.score, 9.99), 2),
                 "cells": self.motion.last.cells if self.motion.last.score >= 0.5 else []},
+            "faults": None if self.faults is None or not self.faults.available else {
+                "boxes": [b for b in self.fault_boxes if b["conf"] >= faults.SHOW_CONF],
+                "streak": self.fault_streak, "alerted": sorted(self.fault_alerted),
+                "alert_conf": faults.ALERT_CONF, "alert_streak": faults.ALERT_STREAK,
+                "ms": round(self.fault_seconds * 1000), "error": self.faults.error},
         }
 
     def flagged(self) -> list[Path]:
