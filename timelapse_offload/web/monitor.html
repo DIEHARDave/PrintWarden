@@ -92,13 +92,52 @@
   /* Row order (Rows menu). The header stays on top; the camera row is the
      video plus its progress bar and file line, which keep their own order. */
   .tile > .head { order: 0; }
-  .tile > .video, .tile > .progress, .tile > .file { order: var(--o-cam, 1); }
-  .tile > .screen { order: var(--o-screen, 2); }
-  .tile > .card { order: var(--o-card, 3); }
-  .tile > .aimon { order: var(--o-ai, 5); }
-  /* Rows left out in the Rows pickers */
-  .no-cam .tile > .video, .no-cam .tile > .progress, .no-cam .tile > .file { display: none; }
-  .no-ai .tile > .aimon { display: none; }
+  /* Each row sits in a wrapper with a slim bar on its left: drag grip to
+     reorder, chevron to collapse. Order, collapse and on/off apply to every
+     printer's column alike, so the rows stay level across tiles. */
+  .tile > .rw { display: grid; grid-template-columns: 14px minmax(0, 1fr); }
+  .tile > .rw[data-row="cam"] { order: var(--o-cam, 1); }
+  .tile > .rw[data-row="screen"] { order: var(--o-screen, 2); }
+  .tile > .rw[data-row="card"] { order: var(--o-card, 3); }
+  .tile > .rw[data-row="spools"] { order: var(--o-spools, 4); }
+  .tile > .rw[data-row="ai"] { order: var(--o-ai, 5); }
+  .rw > .rbody { min-width: 0; }
+  .rbar {
+    display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 3px;
+    border-top: 1px solid var(--border); border-right: 1px solid var(--border);
+    color: var(--muted); user-select: none;
+  }
+  .rbar button {
+    width: 12px; height: 14px; padding: 0; border: 0; border-radius: 3px; background: none;
+    color: inherit; font-size: 10px; line-height: 14px; cursor: pointer;
+  }
+  .rbar button:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .rbar .rgrip { cursor: grab; touch-action: none; font-size: 11px; }
+  .rw.rdragging { opacity: .45; }
+  .rw.rdrop-before { box-shadow: 0 -2px 0 var(--accent); }
+  .rw.rdrop-after { box-shadow: 0 2px 0 var(--accent); }
+  /* Collapsed: a thin strip with the row's name instead of the row */
+  .rw > .rcol {
+    display: none; align-items: center; min-height: 16px; padding: 0 6px;
+    border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); cursor: pointer;
+  }
+  .rw > .rcol:hover { color: var(--accent); }
+  .rw.collapsed > .rbody { display: none; }
+  .rw.collapsed > .rcol { display: flex; }
+  /* Rows switched off in the Rows menu */
+  .no-cam .rw[data-row="cam"], .no-screens .rw[data-row="screen"], .no-cards .rw[data-row="card"],
+  .no-spools .rw[data-row="spools"], .no-ai .rw[data-row="ai"] { display: none; }
+  /* Rows menu in the toolbar */
+  .rowsmenu { position: relative; }
+  .rowsmenu > summary { list-style: none; cursor: pointer; border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; color: var(--text); }
+  .rowsmenu > summary::-webkit-details-marker { display: none; }
+  .rowsmenu > div {
+    position: absolute; top: calc(100% + 4px); left: 0; z-index: 10; min-width: 190px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+    display: grid; gap: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, .35);
+  }
+  .rowsmenu label { color: var(--text); }
+  .rowsmenu .hint { color: var(--muted); font-size: 11px; }
   .video { border-top: 1px solid var(--border); }
   .head {
     display: flex; align-items: center; gap: 6px;
@@ -145,6 +184,11 @@
   .video .logo.bg-dark { background: rgba(0, 0, 0, .55); }
   .video .logo.bg-none { padding: 0; background: none; }
   .video .logo[hidden], .no-logos .video .logo { display: none; }
+  /* Detection boxes from the last checked snapshot, over the live video */
+  .video svg.ov {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    z-index: 1; pointer-events: none; overflow: hidden;
+  }
   /* Bottom right of the camera: capture this frame for training data */
   .video .vfoot {
     position: absolute; right: 0; bottom: 0; z-index: 2;
@@ -223,8 +267,6 @@
   .aimon .werr { color: var(--err); }
   .aimon .wmuted { color: var(--muted); }
   /* Rows pickers in the toolbar */
-  .bar .rowsbar { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); flex-wrap: wrap; }
-  .bar .rowsbar select.add { color: var(--muted); }
   .tile.watch-warning { border-color: var(--warn); }
   .tile.watch-failing { border-color: var(--err); box-shadow: 0 0 0 1px var(--err); }
   .bar a.wlink {
@@ -325,7 +367,6 @@
   /* Fourth row, always right under the card: the spools loaded in each
      lane, like Mainsail's AFC panel. Lanes from Moonraker's lane_data,
      names and weights from Spoolman. */
-  .tile > .spools { order: var(--o-spools, 4); }
   .spools { border-top: 1px solid var(--border); padding: 6px 6px 4px; }
   .no-spools .spools { display: none; }
   .spools .lanes {
@@ -474,7 +515,13 @@
 <div class="bar" id="bar">
   <h1>Printer Monitor</h1>
   <label>Size <input id="size" type="range" min="160" max="1200" step="10"><span class="val" id="sizeVal"></span></label>
-  <label title="Make the tiles as large as possible while every printer fits in the window"><input id="fitWin" type="checkbox"> Fit to window</label>
+  <label title="Width: the tiles fill the window's width in one line, and the page scrolls down. Height: everything fits in the window without scrolling.">Fit to window
+    <select id="fitMode">
+      <option value="off">Off</option>
+      <option value="width">Width</option>
+      <option value="height">Height</option>
+    </select>
+  </label>
   <label>Gap <input id="gap" type="range" min="0" max="24" step="1" style="width:80px"><span class="val" id="gapVal"></span></label>
   <label>Shape
     <select id="ar">
@@ -491,7 +538,7 @@
   </label>
   <label><input id="compact" type="checkbox"> Compact</label>
   <label><input id="logos" type="checkbox"> Logos</label>
-  <span class="rowsbar" title="The rows in each printer's column, top to bottom. Pick a row in the last box to add it; pick “Remove” to drop one.">Rows <span id="rowPicks"></span></span>
+  <details class="rowsmenu" id="rowsMenu"><summary title="Which rows each printer's column shows">Rows ▾</summary><div id="rowsList"></div></details>
   <label title="Zoomed: clicking a screen opens it large, and touches go to the printer there. Inline: clicks on the small screens go straight to the printer.">Screen touch
     <select id="touch">
       <option value="zoom">Zoomed</option>
@@ -640,24 +687,37 @@ const view = Object.assign(
   { size: 360, gap: 6, ar: "4 / 3", fit: "contain", compact: false, touch: false, logos: true },
   store.get("view", {})
 );
-// Rows of each printer's column, top to bottom. Lists saved before the row
-// pickers had a fixed order plus on/off boxes: carry those over once.
+// Rows of each printer's column: view.order is every row top to bottom,
+// view.off the rows switched off, view.collapsed the rows folded to a strip.
+// Older saved views (a fixed order plus on/off boxes, or a list of rows
+// shown) are carried over once.
 const ROW_NAMES = { cam: "Camera", screen: "Screen", card: "Card", spools: "Spools", ai: "AI Monitor" };
-if (!Array.isArray(view.rows)) {
-  const rows = (view.rowOrder || "cam,screen,card").split(",")
-    .filter((r) => !(r === "screen" && view.screens === false) && !(r === "card" && view.cards === false));
-  if (view.spools !== false) {
-    const i = rows.indexOf("card");
-    if (i >= 0) rows.splice(i + 1, 0, "spools"); else rows.push("spools");
+const ALL_ROWS = Object.keys(ROW_NAMES);
+if (!Array.isArray(view.order)) {
+  let shown = view.rows;
+  if (!Array.isArray(shown)) {
+    shown = (view.rowOrder || "cam,screen,card").split(",")
+      .filter((r) => !(r === "screen" && view.screens === false) && !(r === "card" && view.cards === false));
+    if (view.spools !== false) {
+      const i = shown.indexOf("card");
+      if (i >= 0) shown.splice(i + 1, 0, "spools"); else shown.push("spools");
+    }
+    if (view.boxes !== false) shown.push("ai");
   }
-  if (view.boxes !== false) rows.push("ai");
-  view.rows = rows;
-  for (const k of ["rowOrder", "screens", "cards", "spools", "boxes"]) delete view[k];
+  shown = shown.filter((r) => ROW_NAMES[r]);
+  view.order = shown.concat(ALL_ROWS.filter((r) => !shown.includes(r)));
+  view.off = ALL_ROWS.filter((r) => !shown.includes(r));
+  for (const k of ["rows", "rowOrder", "screens", "cards", "spools", "boxes"]) delete view[k];
 }
-view.rows = view.rows.filter((r, i, a) => ROW_NAMES[r] && a.indexOf(r) === i);
-if (!view.rows.length) view.rows = ["cam"];
-// What the rest of the page asks: is this row shown?
-const showRow = (r) => view.rows.includes(r) && (r !== "ai" || watchOn);
+view.order = view.order.filter((r, i, a) => ROW_NAMES[r] && a.indexOf(r) === i).concat(ALL_ROWS.filter((r) => !view.order.includes(r)));
+view.off = (view.off || []).filter((r) => ROW_NAMES[r]);
+view.collapsed = (view.collapsed || []).filter((r) => ROW_NAMES[r]);
+if (!view.fitMode) view.fitMode = view.fitWin ? "height" : "off";
+delete view.fitWin;
+const fitting = () => view.fitMode === "width" || view.fitMode === "height";
+// What the rest of the page asks: is this row shown (on, and offered)?
+const showRow = (r) => !view.off.includes(r) && (r !== "ai" || watchOn);
+const rowOpen = (r) => showRow(r) && !view.collapsed.includes(r);
 let spoolmanBase = store.get("spoolman", DEFAULT_SPOOLMAN);
 
 // --- helpers ----------------------------------------------------------
@@ -793,16 +853,16 @@ function applyView() {
   $("ar").value = view.ar;
   $("fit").value = view.fit;
   $("compact").checked = view.compact;
-  $("fitWin").checked = !!view.fitWin;
+  $("fitMode").value = view.fitMode;
   store.set("view", view);
-  if (view.fitWin) scheduleFit();
+  if (fitting()) scheduleFit();
 }
-// Rows: CSS order per row, hidden rows switched off (no streams, screens or
-// spool polling for rows nobody sees), and the pickers redrawn
+// Rows: CSS order per row, rows switched off stop their streams, screens and
+// spool polling; collapsed rows keep running so they open straight away.
 let rowsWas = null;
 function applyRows() {
   const root = document.documentElement.style, body = document.body.classList;
-  view.rows.forEach((r, i) => root.setProperty("--o-" + r, i + 1));
+  view.order.forEach((r, i) => root.setProperty("--o-" + r, i + 1));
   // First call: buildGrid has started the streams already; screens wait for this
   const was = rowsWas || { cam: true, screen: false, spools: false };
   body.toggle("no-cam", !showRow("cam"));
@@ -810,6 +870,7 @@ function applyRows() {
   body.toggle("no-cards", !showRow("card"));
   body.toggle("no-spools", !showRow("spools"));
   body.toggle("no-ai", !showRow("ai"));
+  document.querySelectorAll(".tile > .rw").forEach((w) => w.classList.toggle("collapsed", view.collapsed.includes(w.dataset.row)));
   view.screens = showRow("screen");   // read by the screen, spools and fit code
   view.cards = showRow("card");
   view.spools = showRow("spools");
@@ -817,38 +878,66 @@ function applyRows() {
   if (was.screen !== showRow("screen")) tiles.forEach(showRow("screen") ? startScreen : stopScreen);
   if (!was.spools && showRow("spools")) refreshSpools();
   rowsWas = { cam: showRow("cam"), screen: showRow("screen"), spools: showRow("spools") };
-  renderRowPicks();
+  renderRowsMenu();
 }
-// One picker per row in use, plus one to add a row while any are left. Each
-// lists only the rows not already picked in another box.
-function renderRowPicks() {
-  const avail = Object.keys(ROW_NAMES).filter((r) => r !== "ai" || watchOn);
-  const rows = view.rows.filter((r) => avail.includes(r));
-  const pick = (i, cur) => `<select data-row="${i}" class="${cur ? "" : "add"}" title="${cur ? `Row ${i + 1}` : "Add a row"}">`
-    + (cur ? "" : '<option value="" selected>+ Add…</option>')
-    + avail.filter((r) => r === cur || !rows.includes(r))
-      .map((r) => `<option value="${r}"${r === cur ? " selected" : ""}>${ROW_NAMES[r]}</option>`).join("")
-    + (cur && rows.length > 1 ? '<option value="">Remove</option>' : "")
-    + "</select>";
-  $("rowPicks").innerHTML = rows.map((r, i) => pick(i, r)).join(" ")
-    + (rows.length < avail.length ? " " + pick(rows.length, "") : "");
+// Rows menu: switch rows on or off. Order and collapse are on each row's bar.
+function renderRowsMenu() {
+  $("rowsList").innerHTML = view.order.filter((r) => r !== "ai" || watchOn).map((r) =>
+    `<label><input type="checkbox" data-row="${r}"${view.off.includes(r) ? "" : " checked"}> ${ROW_NAMES[r]}</label>`).join("")
+    + '<span class="hint">Drag ⠿ on a row\'s left bar to move it; ▾ folds it.</span>';
 }
-$("rowPicks").addEventListener("change", (e) => {
-  const sel = e.target.closest("select[data-row]");
-  if (!sel) return;
-  const avail = Object.keys(ROW_NAMES).filter((r) => r !== "ai" || watchOn);
-  const hidden = view.rows.filter((r) => !avail.includes(r));   // AI Monitor while unavailable
-  const rows = view.rows.filter((r) => avail.includes(r));
-  const i = +sel.dataset.row;
-  if (!sel.value) rows.splice(i, 1);
-  else if (i < rows.length) rows[i] = sel.value;
-  else rows.push(sel.value);
-  view.rows = rows.concat(hidden);
+$("rowsList").addEventListener("change", (e) => {
+  const r = e.target.dataset.row;
+  if (!r) return;
+  view.off = view.off.filter((x) => x !== r).concat(e.target.checked ? [] : [r]);
+  if (ALL_ROWS.every((x) => !showRow(x))) { view.off = view.off.filter((x) => x !== r); e.target.checked = true; }
   applyView();
 });
+document.addEventListener("click", (e) => { if (!e.target.closest("#rowsMenu")) $("rowsMenu").open = false; });
+function toggleCollapse(r) {
+  view.collapsed = view.collapsed.includes(r) ? view.collapsed.filter((x) => x !== r) : view.collapsed.concat([r]);
+  applyView();
+}
+// Drag a row's grip onto another row (in any tile) to move it there
+{
+  let drag = null;   // { row, over, after }
+  const clear = () => document.querySelectorAll(".rw.rdrop-before, .rw.rdrop-after, .rw.rdragging")
+    .forEach((w) => w.classList.remove("rdrop-before", "rdrop-after", "rdragging"));
+  $("grid").addEventListener("pointerdown", (e) => {
+    const grip = e.target.closest(".rgrip");
+    if (!grip) return;
+    e.preventDefault();
+    try { grip.setPointerCapture(e.pointerId); } catch {}
+    drag = { row: grip.closest(".rw").dataset.row, over: null, after: false };
+    document.querySelectorAll(`.rw[data-row="${drag.row}"]`).forEach((w) => w.classList.add("rdragging"));
+  });
+  $("grid").addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const w = document.elementFromPoint(e.clientX, e.clientY)?.closest(".tile > .rw");
+    document.querySelectorAll(".rw.rdrop-before, .rw.rdrop-after").forEach((x) => x.classList.remove("rdrop-before", "rdrop-after"));
+    if (!w || w.dataset.row === drag.row) { drag.over = null; return; }
+    const r = w.getBoundingClientRect();
+    drag.over = w.dataset.row;
+    drag.after = e.clientY > r.top + r.height / 2;
+    w.classList.add(drag.after ? "rdrop-after" : "rdrop-before");
+  });
+  const finish = () => {
+    if (!drag) return;
+    const { row, over, after } = drag;
+    drag = null;
+    clear();
+    if (!over) return;
+    const order = view.order.filter((x) => x !== row);
+    order.splice(order.indexOf(over) + (after ? 1 : 0), 0, row);
+    view.order = order;
+    applyView();
+  };
+  $("grid").addEventListener("pointerup", finish);
+  $("grid").addEventListener("pointercancel", () => { drag = null; clear(); });
+}
 // Moving the slider by hand ends fit-to-window
-$("size").addEventListener("input", (e) => { view.size = +e.target.value; view.fitWin = false; applyView(); });
-$("fitWin").addEventListener("change", (e) => { view.fitWin = e.target.checked; applyView(); });
+$("size").addEventListener("input", (e) => { view.size = +e.target.value; view.fitMode = "off"; applyView(); });
+$("fitMode").addEventListener("change", (e) => { view.fitMode = e.target.value; applyView(); });
 
 // --- fit to window ----------------------------------------------------
 // A tile's height is a fixed part (header, file line, borders, temperature
@@ -871,15 +960,17 @@ function fitWidth() {
   const availH = window.innerHeight - $("bar").offsetHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
 
   const [a, b] = view.ar.split("/").map(Number);
+  const n = vis.length, gap = view.gap;
+  // Width: every tile in one line across the window; the page may scroll down
+  if (view.fitMode === "width") return Math.max(120, Math.floor((availW - (n - 1) * gap) / n));
   let k = 0;
-  if (showRow("cam")) k += b / a;     // camera
-  if (showRow("screen")) k += 3 / 5;  // screen row
-  if (showRow("card")) k += 2 / 3;    // card image
-  if (showRow("ai")) k += b / a;      // AI Monitor frame
+  if (rowOpen("cam")) k += b / a;     // camera
+  if (rowOpen("screen")) k += 3 / 5;  // screen row
+  if (rowOpen("card")) k += 2 / 3;    // card image
+  if (rowOpen("ai")) k += b / a;      // AI Monitor frame
   // The tallest tile: the spools row differs between printers
   const fixed = Math.max(...vis.map((t) => t.el.offsetHeight - t.el.offsetWidth * k));
 
-  const n = vis.length, gap = view.gap;
   let best = 0;
   for (let cols = 1; cols <= n; cols++) {
     const rows = Math.ceil(n / cols);
@@ -890,7 +981,7 @@ function fitWidth() {
   return Math.max(120, Math.floor(best));
 }
 function fitToWindow() {
-  if (!view.fitWin) return;
+  if (!fitting()) return;
   // Twice: text in the card bar can wrap differently at the new width,
   // which changes the fixed part
   for (let pass = 0; pass < 2; pass++) {
@@ -898,9 +989,13 @@ function fitToWindow() {
     if (w === null) return;
     setTileWidth(w);
   }
-  // Rounding safety: shrink a little until nothing scrolls
+  // Rounding safety: shrink a little until nothing scrolls (sideways for
+  // Width, at all for Height)
   let w = view.size;
-  while (w > 120 && document.documentElement.scrollHeight > window.innerHeight + 1) {
+  const over = () => view.fitMode === "width"
+    ? document.documentElement.scrollWidth > window.innerWidth + 1
+    : document.documentElement.scrollHeight > window.innerHeight + 1;
+  while (w > 120 && over()) {
     w -= 4;
     setTileWidth(w);
   }
@@ -939,12 +1034,17 @@ function buildGrid() {
         <span class="temps"></span>
         <span class="wchips"></span>
       </div>
-      <div class="video"><img class="cam" alt=""><img class="logo" alt="" hidden><div class="vfoot"><button type="button" class="wsnap" hidden title="Capture this frame for training data: box the problem and say what it is"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button></div><div class="msg">Connecting…</div></div>
+      <div class="rw" data-row="cam"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ Camera</div><div class="rbody">
+      <div class="video"><img class="cam" alt=""><img class="logo" alt="" hidden><svg class="ov" aria-hidden="true"></svg><div class="vfoot"><button type="button" class="wsnap" hidden title="Capture this frame for training data: box the problem and say what it is"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button></div><div class="msg">Connecting…</div></div>
       <div class="progress"><div></div></div>
       <div class="file"></div>
+      </div></div>
+      <div class="rw" data-row="screen"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ Screen</div><div class="rbody">
       ${p.screen
         ? `<div class="screen"><iframe loading="lazy"></iframe><div class="shield" title="Open screen"></div></div>`
         : `<div class="screen empty">No remote screen</div>`}
+      </div></div>
+      <div class="rw" data-row="card"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ Card</div><div class="rbody">
       <div class="card">
         <a class="cimg" href="${esc(webUrl(p))}" target="_blank" rel="noopener">
           <div class="cbar">
@@ -955,16 +1055,21 @@ function buildGrid() {
         </a>
         <div class="cprev"></div>
       </div>
+      </div></div>
+      <div class="rw" data-row="spools"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ Spools</div><div class="rbody">
       <div class="spools">
         <div class="lanes"><div class="smsg">Loading spools…</div></div>
         <div class="sfoot"><span class="sstate"></span><button type="button" class="ssync" disabled title="Set each loaded spool's Location in Spoolman to this printer and lane, and clear it on spools no longer loaded here">Sync</button></div>
       </div>
+      </div></div>
+      <div class="rw" data-row="ai"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ AI Monitor</div><div class="rbody">
       <div class="aimon">
         <div class="aihead"><span class="aititle">AI Monitor</span><a class="aistate" href="watch/" target="_blank" rel="noopener"></a></div>
         <div class="aiimg"><img alt="" hidden><svg class="ov" aria-hidden="true"></svg><div class="aimsg">Not watched by the server</div><span class="aiage" hidden></span></div>
         <div class="aibody" hidden></div>
         <div class="aiact" hidden></div>
-      </div>`;
+      </div>
+      </div></div>`;
     grid.appendChild(el);
     const t = {
       p, el,
@@ -981,6 +1086,7 @@ function buildGrid() {
       mainsailName: "",
       msg: el.querySelector(".msg"),
       ov: el.querySelector(".aiimg svg.ov"),
+      lov: el.querySelector(".video svg.ov"),
       aiimg: el.querySelector(".aiimg img"),
       aimsg: el.querySelector(".aimsg"),
       aiage: el.querySelector(".aiage"),
@@ -1013,6 +1119,12 @@ function buildGrid() {
     t.img.style.transform = imgTransform(p);
     t.ov.style.transform = imgTransform(p);
     t.aiimg.style.transform = imgTransform(p);
+    t.lov.style.transform = imgTransform(p);
+    el.querySelectorAll(".rw").forEach((w) => {
+      w.classList.toggle("collapsed", view.collapsed.includes(w.dataset.row));
+      w.querySelector(".rfold").addEventListener("click", () => toggleCollapse(w.dataset.row));
+      w.querySelector(".rcol").addEventListener("click", () => toggleCollapse(w.dataset.row));
+    });
     t.img.addEventListener("load", () => { t.msg.style.display = "none"; });
     t.img.addEventListener("error", () => {
       t.msg.textContent = "No video, retrying…";
@@ -1036,7 +1148,7 @@ function buildGrid() {
     tiles.push(t);
   });
   startAll();
-  if (view.fitWin) scheduleFit();
+  if (fitting()) scheduleFit();
 }
 
 function startStream(t) {
@@ -1404,7 +1516,7 @@ async function refreshSpools() {
   try {
     await Promise.all([loadSpoolman(), ...tiles.map(loadLanes)]);
     tiles.forEach(renderSpools);
-    if (view.fitWin) scheduleFit();
+    if (fitting()) scheduleFit();
   } finally {
     spoolsBusy = false;
   }
@@ -1601,6 +1713,8 @@ function renderWatch(t) {
     t.aimsg.hidden = true;
     t.aiage.textContent = `checked ${watchAgo(snap.t)} ago`;
     t.aiage.hidden = false;
+    t.lov.setAttribute("viewBox", `0 0 ${snap.size[0]} ${snap.size[1]}`);
+    t.lov.setAttribute("preserveAspectRatio", view.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet");
     const [sw, sh] = snap.size;
     t.ov.setAttribute("viewBox", `0 0 ${sw} ${sh}`);
     t.ov.setAttribute("preserveAspectRatio", view.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet");
@@ -1614,8 +1728,10 @@ function renderWatch(t) {
         return `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#36cfc9" stroke-width="2" vector-effect="non-scaling-stroke"><title>${esc(name)} ${Math.round(b.conf * 100)}% (problem-type detector, trial)</title></rect>`
           + `<text x="${b.x + 3}" y="${Math.max(fs, b.y - 4)}" font-size="${fs}" fill="#36cfc9" stroke="#000" stroke-width="${fs / 5}" paint-order="stroke" font-family="system-ui, sans-serif" font-weight="600">${esc(name)} ${Math.round(b.conf * 100)}%</text>`;
       })).join("");
+    t.lov.innerHTML = t.ov.innerHTML;   // the same boxes over the live camera
   } else {
     t.ov.innerHTML = "";
+    t.lov.innerHTML = "";
     t.aiimg.hidden = true; t.aiage.hidden = true; t.aimsg.hidden = false;
     delete t.aiimg.dataset.src;
     t.aimsg.textContent = !w ? "Not watched by the server"
@@ -1750,7 +1866,7 @@ async function fetchWatch() {
     watchOn = false;
   }
   $("watchLink").hidden = !watchOn;
-  if (was !== watchOn) { applyRows(); if (view.fitWin) scheduleFit(); }
+  if (was !== watchOn) { applyRows(); if (fitting()) scheduleFit(); }
   $("watchLink").title = !watchMeta ? "" : watchMeta.model_error ? "Detection model: " + watchMeta.model_error
     : watchMeta.model_ready ? `Checking every ${watchMeta.interval}s while printing` : "Detection model loads on first print";
   return watchOn;
