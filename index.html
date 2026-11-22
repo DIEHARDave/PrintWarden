@@ -871,6 +871,7 @@ function applyRows() {
   rowsWas = { cam: showRow("cam"), screen: showRow("screen"), spools: showRow("spools") };
   renderRowsMenu();
   equalizeRows();
+  document.querySelectorAll(".rcol[data-texts]").forEach(fitStrip);
 }
 // Rows menu: switch rows on or off. Order and collapse are on each row's bar.
 function renderRowsMenu() {
@@ -903,6 +904,17 @@ function equalizeRows() {
     }
   });
 }
+// A folded row's strip: the first of its wordings that fits (measured only
+// while it is shown; a hidden strip keeps the full wording until then)
+function fitStrip(el) {
+  let texts;
+  try { texts = JSON.parse(el.dataset.texts || "[]"); } catch { texts = []; }
+  for (const text of texts) {
+    el.textContent = text;
+    if (!el.clientWidth || el.scrollWidth <= el.clientWidth) break;
+  }
+}
+window.addEventListener("resize", () => document.querySelectorAll(".rcol[data-texts]").forEach(fitStrip));
 function toggleCollapse(r) {
   view.collapsed = view.collapsed.includes(r) ? view.collapsed.filter((x) => x !== r) : view.collapsed.concat([r]);
   applyView();
@@ -1128,7 +1140,9 @@ function buildGrid() {
     loadMainsailMeta(t);
     t.img.style.transform = imgTransform(p);
     t.lov.style.transform = imgTransform(p);
-    el.querySelectorAll(".rbody").forEach((b) => rowObserver.observe(b));
+    // Watch what is inside each row, not the row itself: the row is held at the
+    // tallest copy's height, so content shrinking (Activity closed) would go unseen
+    el.querySelectorAll(".rbody > *").forEach((c) => rowObserver.observe(c));
     el.querySelectorAll(".rw").forEach((w) => {
       w.classList.toggle("collapsed", view.collapsed.includes(w.dataset.row));
       w.querySelector(".rfold").addEventListener("click", () => toggleCollapse(w.dataset.row));
@@ -1145,7 +1159,7 @@ function buildGrid() {
     el.querySelector(".video").addEventListener("click", () => openZoom(t));
     // The capture button must not open the enlarged view
     el.querySelector(".vfoot").addEventListener("click", (e) => e.stopPropagation());
-    t.aiact.addEventListener("toggle", (e) => { t.wOpen = e.target.open; }, true);
+    t.aiact.addEventListener("toggle", (e) => { t.wOpen = e.target.open; equalizeRows(); }, true);
     t.wsnap.addEventListener("click", () => {
       if (t.watch) window.open(`label/?printer=${encodeURIComponent(t.watch.name)}`, "_blank");
     });
@@ -1338,7 +1352,13 @@ function updateCard(t, s, heaters) {
     if (!t.cprev.clientWidth || fits()) break;
   }
   // Folded card row: its status and temperatures on the one-line strip
-  t.cardStrip.textContent = "▸ " + [status, ...items.map(([n, v]) => `${short(n)} ${v.replace("° / ", "/")}`)].join(" · ");
+  // Longest wording that fits the strip: full names, then shorter temperatures, then E0/HB
+  t.cardStrip.dataset.texts = JSON.stringify([
+    (n, v) => `${n} ${v}`,
+    (n, v) => `${n} ${v.replace("° / ", "/")}`,
+    (n, v) => `${short(n)} ${v.replace("° / ", "/")}`,
+  ].map((fmt) => "▸ " + [status, ...items.map(([n, v]) => fmt(n, v))].join(" · ")));
+  fitStrip(t.cardStrip);
   t.cardStrip.title = [status, file, ...items.map(([n, v]) => `${n} ${v}`)].filter(Boolean).join(" · ") + " (click to open the card)";
 }
 
