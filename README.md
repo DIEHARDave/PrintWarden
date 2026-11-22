@@ -21,19 +21,25 @@ any static web server, or straight from disk.
 - **Spoolman location sync** (optional): sets each loaded spool's Spoolman
   location to `<printer> <lane>` and clears locations that are out of date.
   A spool claimed by two printers is flagged and skipped.
-- **Failure-detection overlay** (optional): served by
-  TimelapseOffload (the author's timelapse and failure-detection container,
-  not public), which has its own copy of this page, the page reads its Print Watch status from
-  `api/status` and draws the failure and moved-part boxes over the live
-  video, with a score badge and a colored tile border. The tile header shows
-  the timelapse and detection modes (click the detection chip to change
-  it), a detection row shows the score history, part-position check,
-  **Not a failure**, activity and flagged frames, and **Printers…** gets the
-  server's detection, alert and timelapse settings under each printer's row
-  (the Discord webhook is write-only: it is never shown once saved). A camera button on each
-  watched camera, and a ✎ on each flagged frame, open the server's label page
-  to box problems for training data. Served anywhere else,
-  that request fails quietly and nothing changes.
+- **Rows you choose**: the **Rows** boxes in the toolbar set what each
+  printer's column shows, top to bottom: Camera, Screen, Card, Spools and
+  AI Monitor. Each box lists only the rows not picked yet; the last box adds
+  a row, **Remove** drops one. Rows left out stop their streams and polling.
+- **AI Monitor** (optional): when the page is served by TimelapseOffload
+  (the author's timelapse and failure-detection container, not public, which
+  has its own copy of this page), it reads that server's detection status
+  from `api/status`. Each printer's AI Monitor card shows the last frame the
+  detectors checked with their boxes drawn on it (yellow spaghetti, red
+  dashed moved part, cyan problem type), the failure score and its history,
+  the part-position check, the problem types seen, **Not a failure**, and the
+  alert history with flagged frames (✎ opens a frame on the server's label
+  page for training data). The tile header shows the timelapse and detection
+  modes (click the detection chip to change it), the tile border turns
+  orange or red on an alert, a camera button on the live camera captures a
+  frame for labelling, and **Printers…** gets the server's detection, alert
+  and timelapse settings under each printer's row (the Discord webhook is
+  write-only: it is never shown once saved). Served anywhere else, that
+  request fails quietly and the AI Monitor row is not offered.
 
 ## Setup
 
