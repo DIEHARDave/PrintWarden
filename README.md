@@ -36,7 +36,8 @@ any static web server, or straight from disk.
   (the author's timelapse and failure-detection container, not public, which
   has its own copy of this page), it reads that server's detection status
   from `api/status`. The detectors' boxes are drawn over each live camera
-  (yellow spaghetti, red dashed moved part, cyan problem type). Each
+  in the label page's problem-type colors (red spaghetti, orange dashed
+  moved part, each named problem type in its own color). Each
   printer's AI Monitor card has a timelapse chip and two detection chips,
   **spaghetti** and **moved**, each clicked through off, alert and
   alert + pause; the failure score and its history, the part-position check,
@@ -53,7 +54,8 @@ any static web server, or straight from disk.
 ## Screenshots
 
 Five printers with the AI Monitor row on, served by TimelapseOffload. The
-red dashed boxes on the cameras are the part-position check's changed areas:
+dashed boxes on the cameras are the part-position check's changed areas
+(drawn red before boxes took the problem-type colors; orange now):
 
 ![Five printer columns with camera, AI Monitor card, remote screen, print preview, temperatures and spools; red dashed boxes on two cameras](docs/ai-monitor-overview.png)
 
@@ -62,6 +64,13 @@ A moved-part alert: the tile border turns red, the AI Monitor card shows
 on the printer's own screen:
 
 ![One printer column during a moved-part alert, with flagged frames in the activity list and a Printer Error dialog on the remote screen](docs/moved-part-alert.png)
+
+A flagged frame opened on TimelapseOffload's label page: the detectors' boxes
+are shown dashed in their problem type's color (red was the part-position
+color when this was taken; it is orange now), and you box the problem, pick
+its type and mark the frame as a problem, fine or not sure:
+
+![Label frame page with dashed detector boxes on the camera picture and the problem type list, boxes and verdict on the right](docs/label-frame.png)
 
 ## Setup
 

@@ -1767,14 +1767,14 @@ function renderWatch(t) {
     // Boxes follow the picture: cropped, letterboxed or stretched the same way
     t.lov.setAttribute("preserveAspectRatio", { cover: "xMidYMid slice", fill: "none" }[view.fit] || "xMidYMid meet");
     t.lov.innerHTML = fail.map((b) =>
-      `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#ffd23f" stroke-width="2" vector-effect="non-scaling-stroke"><title>Failure ${Math.round(b.conf * 100)}%</title></rect>`).concat(
+      `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="${TYPE_COLORS.spaghetti}" stroke-width="2" vector-effect="non-scaling-stroke"><title>Failure ${Math.round(b.conf * 100)}%</title></rect>`).concat(
       cells.map(([x, y, bw, bh]) =>
-      `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="rgba(255,80,80,.14)" stroke="#ff5050" stroke-dasharray="5 4" stroke-width="2" vector-effect="non-scaling-stroke"><title>Changed since a few minutes ago</title></rect>`)).concat(
-      // Problem-type model (trial): cyan boxes named after the type
+      `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="rgba(255,169,64,.14)" stroke="${TYPE_COLORS.detached}" stroke-dasharray="5 4" stroke-width="2" vector-effect="non-scaling-stroke"><title>Changed since a few minutes ago</title></rect>`)).concat(
+      // Problem-type model (trial): boxes in their type's color, named after the type
       types.map((b) => {
         const fs = Math.max(14, sw / 45), name = FAULT_NAMES[b.label] || b.label;
-        return `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#36cfc9" stroke-width="2" vector-effect="non-scaling-stroke"><title>${esc(name)} ${Math.round(b.conf * 100)}% (problem-type detector, trial)</title></rect>`
-          + `<text x="${b.x + 3}" y="${Math.max(fs, b.y - 4)}" font-size="${fs}" fill="#36cfc9" stroke="#000" stroke-width="${fs / 5}" paint-order="stroke" font-family="system-ui, sans-serif" font-weight="600">${esc(name)} ${Math.round(b.conf * 100)}%</text>`;
+        return `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="${typeColor(b.label)}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${esc(name)} ${Math.round(b.conf * 100)}% (problem-type detector, trial)</title></rect>`
+          + `<text x="${b.x + 3}" y="${Math.max(fs, b.y - 4)}" font-size="${fs}" fill="${typeColor(b.label)}" stroke="#000" stroke-width="${fs / 5}" paint-order="stroke" font-family="system-ui, sans-serif" font-weight="600">${esc(name)} ${Math.round(b.conf * 100)}%</text>`;
       })).join("");
   } else {
     t.lov.innerHTML = "";
@@ -1793,10 +1793,14 @@ function renderWatch(t) {
   t.aistate.textContent = text;
   t.aistate.className = "aistate " + level;
   t.aistate.title = (snap ? `Last check ${watchAgo(snap.t)} ago. ` : "")
-    + "Boxes on the camera: yellow spaghetti (Obico), red dashed part moved, cyan problem type (trial). Opens Print Watch.";
+    + "Boxes on the camera: colored by problem type as on the label page: red spaghetti (Obico, unnamed), orange dashed part moved, named boxes from the problem-type detector (trial). Opens Print Watch.";
 }
 
 // Problem types from the server's own detector (same keys as its training labels)
+// Box colors per problem type, the same as the label page's Problem type list
+const TYPE_COLORS = { spaghetti: "#ff4d4f", detached: "#ffa940", layer_shift: "#fadb14", warping: "#73d13d",
+  stringing: "#36cfc9", under_extrusion: "#4096ff", over_extrusion: "#9254de", blob: "#f759ab", cracks: "#bae637", other: "#d4b106" };
+const typeColor = (k) => TYPE_COLORS[k] || TYPE_COLORS.other;
 const FAULT_NAMES = { spaghetti: "Spaghetti", detached: "Part loose", layer_shift: "Layer shift", warping: "Warping",
   stringing: "Stringing", under_extrusion: "Under-extrusion", over_extrusion: "Over-extrusion", blob: "Blob",
   cracks: "Cracks", other: "Problem" };
@@ -1909,22 +1913,22 @@ function frameBoxes(info) {
   const [sw] = info.size || [1280];
   const fs = Math.max(14, sw / 40);
   return (info.boxes || []).map((b) =>
-    `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#ffd23f" stroke-width="2" vector-effect="non-scaling-stroke"/>`).concat(
+    `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="${TYPE_COLORS.spaghetti}" stroke-width="2" vector-effect="non-scaling-stroke"/>`).concat(
     (info.cells || []).map(([x, y, bw, bh]) =>
-    `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="rgba(255,80,80,.18)" stroke="#ff5050" stroke-dasharray="5 4" stroke-width="2" vector-effect="non-scaling-stroke"/>`),
+    `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="rgba(255,169,64,.18)" stroke="${TYPE_COLORS.detached}" stroke-dasharray="5 4" stroke-width="2" vector-effect="non-scaling-stroke"/>`),
     (info.faults || []).map((b) =>
-    `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#36cfc9" stroke-width="2" vector-effect="non-scaling-stroke"/>`
-      + `<text x="${b.x + 3}" y="${Math.max(fs, b.y - 4)}" font-size="${fs}" fill="#36cfc9" stroke="#000" stroke-width="${fs / 5}" paint-order="stroke" font-family="system-ui, sans-serif" font-weight="600">${esc(FAULT_NAMES[b.label] || b.label)}</text>`)).join("");
+    `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="${typeColor(b.label)}" stroke-width="2" vector-effect="non-scaling-stroke"/>`
+      + `<text x="${b.x + 3}" y="${Math.max(fs, b.y - 4)}" font-size="${fs}" fill="${typeColor(b.label)}" stroke="#000" stroke-width="${fs / 5}" paint-order="stroke" font-family="system-ui, sans-serif" font-weight="600">${esc(FAULT_NAMES[b.label] || b.label)}</text>`)).join("");
 }
 function frameSummary(info) {
   const parts = [];
   if (info.reason) parts.push(info.reason);
   const sp = (info.boxes || []).length;
-  if (sp) parts.push(`Spaghetti boxes (yellow): ${sp}, up to ${Math.round(Math.max(...info.boxes.map((b) => b.conf)) * 100)}%`);
-  if ((info.cells || []).length) parts.push("Red dashed: the area that changed");
+  if (sp) parts.push(`Spaghetti boxes (red): ${sp}, up to ${Math.round(Math.max(...info.boxes.map((b) => b.conf)) * 100)}%`);
+  if ((info.cells || []).length) parts.push("Orange dashed: the area that changed");
   const ft = {};
   (info.faults || []).forEach((b) => { ft[b.label] = Math.max(ft[b.label] || 0, b.conf); });
-  for (const [k, c] of Object.entries(ft)) parts.push(`${FAULT_NAMES[k] || k} (cyan): ${Math.round(c * 100)}%`);
+  for (const [k, c] of Object.entries(ft)) parts.push(`${FAULT_NAMES[k] || k} (named box): ${Math.round(c * 100)}%`);
   if (!parts.length) parts.push(info.error ? "Detection details unavailable: " + info.error : "Nothing was boxed on this frame");
   if (info.recomputed) parts.push("(boxes worked out again from the saved frame)");
   return parts.join("\n");
