@@ -1,6 +1,10 @@
 """Build one YOLO training set from public datasets plus our own labelled frames.
 
-    python -I tools/build_dataset.py OUT_DIR SOURCE.zip [SOURCE.zip ...]
+    python -I tools/build_dataset.py OUT_DIR SOURCE.zip [resplit:SOURCE.zip ...]
+
+Prefix a source with resplit: when its own split scattered copies of one scene
+over train/valid/test (3D printing failure v1 does); otherwise every copy would
+follow the first one read, which is test.
 
 Each SOURCE is a YOLO-format zip: a Roboflow "YOLOv8" export (train/ valid/
 test/ with images/ + labels/, data.yaml naming the classes) or our own
@@ -9,7 +13,8 @@ frames are split 80/10/10 by name so a frame always lands in the same split).
 
 Class names are mapped onto our label types (the order of LABELS in
 timelapse_offload/training.py, which is also the class id order here).
-Boxes with a class we have no type for are dropped. Roboflow keeps each
+An image with a box of a class we have no type for is skipped whole (kept
+without that box, it would teach the model there is nothing there). Roboflow keeps each
 upload's original file name; these sets reuse one name for rotated or cropped
 copies of the same scene, and share scenes between sets. All images with one
 original name go to the split the first of them was in, so a scene cannot be
@@ -38,7 +43,10 @@ CLASSES = ["spaghetti", "detached", "layer_shift", "warping", "stringing",
 ALIASES = {
     "spaghetti": "spaghetti", "stringing": "stringing", "stringging": "stringing",
     "warping": "warping", "under_extrusion": "under_extrusion", "over_extrusion": "over_extrusion",
-    "blob": "blob", "blobs": "blob", "zits": "blob", "crack": "cracks", "cracks": "cracks",
+    # "zits" (3D printing failure v1) is left out on purpose: ~27 boxes per close-up
+    # photo, median 0.08% of the frame; invisible on a printer camera and it would
+    # swamp every other type (44k of its boxes vs 500 real blobs).
+    "blob": "blob", "blobs": "blob", "crack": "cracks", "cracks": "cracks",
     "layer_shift": "layer_shift", "detached": "detached", "other": "other",
 }
 SPLITS = {"train": "train", "valid": "valid", "val": "valid", "test": "test"}
@@ -52,6 +60,16 @@ def thumb(data: bytes):
             return np.asarray(im.convert("L").resize((48, 48)), dtype=np.float32)
     except Exception:
         return None
+
+
+def hash_split(key: str) -> str:
+    """80/10/10 train/valid/test, always the same for the same key."""
+    return ("valid", "test", *["train"] * 8)[int(hashlib.md5(key.encode()).hexdigest(), 16) % 10]
+
+
+def scene_name(file_name: str) -> str:
+    """Roboflow's original upload name: 'x_jpg.rf.<hash>.jpg' -> 'x_jpg'."""
+    return re.sub(r"\.rf\.[0-9a-f]+$", "", Path(file_name).stem).lower()
 
 
 def norm(name: str) -> str:
@@ -101,8 +119,19 @@ def main() -> None:
     attribution, totals = [], Counter()
 
     for n, src in enumerate(sys.argv[2:]):
-        path = Path(src)
+        resplit = src.startswith("resplit:")
+        path = Path(src[len("resplit:"):] if resplit else src)
         z = zipfile.ZipFile(path)
+        # resplit: a scene whose copies this source scattered over its own splits
+        # (and no earlier source had) gets one split from its name, 80/10/10.
+        scattered = set()
+        if resplit:
+            where = {}
+            for m in z.namelist():
+                parts = m.split("/")
+                if IMG.search(m) and "images" in parts and ".rf." in parts[-1]:
+                    where.setdefault(scene_name(parts[-1]), set()).add(parts[0])
+            scattered = {k for k, v in where.items() if len(v) > 1 and k not in scenes}
         names = class_names(z)
         mapping = {i: ALIASES.get(norm(c)) for i, c in enumerate(names)}
         url, lic = source_info(z, path)
@@ -116,7 +145,7 @@ def main() -> None:
                 continue
             split = SPLITS.get(parts[0])
             if split is None:   # our export: no split, decide by name
-                split = ("valid", "test", *["train"] * 8)[int(hashlib.md5(m.encode()).hexdigest(), 16) % 10]
+                split = hash_split(m)
             data = z.read(m)
             digest = hashlib.md5(data).hexdigest()
             if digest in seen_hash:
@@ -128,7 +157,9 @@ def main() -> None:
                 continue
             seen_hash.add(digest)
             if ".rf." in parts[-1]:
-                orig = re.sub(r"\.rf\.[0-9a-f]+$", "", Path(parts[-1]).stem).lower()
+                orig = scene_name(parts[-1])
+                if orig in scattered and orig not in scenes:
+                    split = hash_split(orig)
                 if orig in scenes:
                     first_split, thumbs = scenes[orig]
                     if any(float(np.abs(small - t).mean()) < 3 for t in thumbs):
@@ -149,14 +180,21 @@ def main() -> None:
                         continue   # polygons or junk: skip the box
                     ours = mapping.get(int(f[0])) if f[0].isdigit() else None
                     if ours is None:
-                        stats["box dropped"] += 1
+                        lines.append((None, ""))
                         continue
                     try:
                         vals = [min(1.0, max(0.0, float(v))) for v in f[1:]]
                     except ValueError:
                         continue
-                    lines.append(f"{CLASSES.index(ours)} " + " ".join(f"{v:.6f}" for v in vals))
-                    stats[ours] += 1
+                    lines.append((ours, f"{CLASSES.index(ours)} " + " ".join(f"{v:.6f}" for v in vals)))
+            if any(o is None for o, _ in lines):
+                # a class we leave out is in the picture: unlabelled it would teach
+                # "nothing here", so the image goes
+                stats["image skipped (unused class)"] += 1
+                continue
+            for ours, _ in lines:
+                stats[ours] += 1
+            lines = [t for _, t in lines]
             name = f"{tag}_{digest[:12]}"
             ext = IMG.search(m).group(0).lower().replace("jpeg", "jpg")
             (out / split / "images" / (name + ext)).write_bytes(data)
