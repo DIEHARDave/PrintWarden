@@ -12,7 +12,7 @@ test/ with images/ + labels/, data.yaml naming the classes) or our own
 frames are split 80/10/10 by name so a frame always lands in the same split).
 
 Class names are mapped onto our label types (the order of LABELS in
-timelapse_offload/training.py, which is also the class id order here).
+printwarden/training.py, which is also the class id order here).
 An image with a box of a class we have no type for is skipped whole (kept
 without that box, it would teach the model there is nothing there). Roboflow keeps each
 upload's original file name; these sets reuse one name for rotated or cropped
@@ -35,7 +35,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-# Same order as timelapse_offload/training.py LABELS
+# Same order as printwarden/training.py LABELS
 CLASSES = ["spaghetti", "detached", "layer_shift", "warping", "stringing",
            "under_extrusion", "over_extrusion", "blob", "cracks", "other"]
 
@@ -104,7 +104,7 @@ def source_info(z: zipfile.ZipFile, path: Path) -> tuple[str, str]:
         url = re.search(r"url:\s*(\S+)", text)
         lic = re.search(r"license:\s*(.+)", text)
         return (url.group(1) if url else path.name), (lic.group(1).strip() if lic else "unknown")
-    return path.name, "own frames (TimelapseOffload label page)"
+    return path.name, "own frames (PrintWarden label page)"
 
 
 def main() -> None:
@@ -209,7 +209,7 @@ def main() -> None:
         f"path: {out.resolve().as_posix()}\ntrain: train/images\nval: valid/images\ntest: test/images\n"
         f"nc: {len(CLASSES)}\nnames: {CLASSES}\n")
     (out / "ATTRIBUTION.txt").write_text(
-        "Training data for TimelapseOffload failure detection.\n"
+        "Training data for PrintWarden failure detection.\n"
         "Public sets are used under their licences (CC BY 4.0: credit the authors below).\n\n"
         + "\n".join(attribution))
     print("total", dict(totals))

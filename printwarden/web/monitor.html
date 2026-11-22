@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Printer Monitor</title>
+<title>PrintWarden</title>
 <style>
   :root {
     --bg: #f4f5f7;
@@ -451,7 +451,7 @@
     border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px;
   }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  /* Print Watch settings (kept on the TimelapseOffload server) */
+  /* Server settings (kept on the PrintWarden server) */
   #pwSet { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
   #pwSet[hidden] { display: none; }
   #pwSet h3 { margin: 14px 0 4px; font-size: 13px; }
@@ -507,7 +507,7 @@
 <body>
 
 <div class="bar" id="bar">
-  <h1>Printer Monitor</h1>
+  <h1>PrintWarden</h1>
   <label>Size <input id="size" type="range" min="160" max="1200" step="10"><span class="val" id="sizeVal"></span></label>
   <label title="Width: the tiles fill the window's width in one line, and the page scrolls down. Height: everything fits in the window without scrolling.">Fit to window
     <select id="fitMode">
@@ -541,7 +541,7 @@
     </select>
   </label>
   <span class="spacer"></span>
-  <a class="wlink" id="watchLink" href="watch/" hidden title="Detection details, alert history and settings">Print Watch</a>
+  <a class="wlink" id="watchLink" href="label/" target="_blank" rel="noopener" hidden title="Training frames and labels">Labels</a>
   <button id="settingsBtn" type="button">Printers…</button>
 </div>
 
@@ -556,7 +556,7 @@
   <label class="spoolman-url">Spoolman <input type="text" id="spoolmanUrl" placeholder="http://10.0.1.206:7912 (empty = off)"></label>
   <section id="pwSet" hidden>
     <h2>Detection, alerts and timelapses</h2>
-    <p>Each printer's row above has its server settings under it: tick <b>Watch</b> to have the TimelapseOffload server handle it. Timelapse: <b>Render frames</b> renders moonraker-timelapse frames on the server; <b>Copy videos</b> copies finished videos from printers that render on-device (Snapmaker U1). <b>Spaghetti</b> (Obico's model) and <b>Moved parts</b> each have their own setting: <b>Alert</b> notifies; <b>Alert + pause</b> also pauses the print. These live on the server, so they apply to everyone, and Save applies them at once. <span id="pwModel"></span></p>
+    <p>Each printer's row above has its server settings under it: tick <b>Watch</b> to have the PrintWarden server handle it. Timelapse: <b>Render frames</b> renders moonraker-timelapse frames on the server; <b>Copy videos</b> copies finished videos from printers that render on-device (Snapmaker U1). <b>Spaghetti</b> (Obico's model) and <b>Moved parts</b> each have their own setting: <b>Alert</b> notifies; <b>Alert + pause</b> also pauses the print. These live on the server, so they apply to everyone, and Save applies them at once. <span id="pwModel"></span></p>
     <div class="actions">
       <input id="pwSubnet" style="width:150px" placeholder="10.0.1.0/24">
       <button type="button" id="pwScan" title="Look for Moonraker on port 7125 across the subnet">Find printers</button>
@@ -1083,7 +1083,7 @@ function buildGrid() {
       <div class="rw" data-row="ai"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ AI Monitor</div><div class="rbody">
       <div class="aimon">
         <div class="aihead"><span class="aititle">AI Monitor</span><span class="wchips"></span></div>
-        <a class="aistate" href="watch/" target="_blank" rel="noopener"></a>
+        <a class="aistate" href="label/" target="_blank" rel="noopener"></a>
         <div class="aibody" hidden></div>
         <div class="aiact" hidden></div>
       </div>
@@ -1111,7 +1111,7 @@ function buildGrid() {
       wchips: el.querySelector(".wchips"),
       wsnap: el.querySelector(".wsnap"),
       wOpen: false,      // AI Monitor's Activity list left open
-      watch: null,       // this printer's Print Watch status, when served alongside
+      watch: null,       // this printer's detection status from the server
       frame: el.querySelector(".screen iframe"),
       retry: null,
       lanesEl: el.querySelector(".spools .lanes"),
@@ -1731,8 +1731,8 @@ async function syncSpools(t) {
   setTimeout(() => { t.syncMsg = ""; renderSpools(t); }, 8000);
 }
 
-// --- Print Watch overlay ----------------------------------------------
-// When this page is served by TimelapseOffload, its Print Watch status
+// --- Detection overlay ------------------------------------------------
+// When this page is served by PrintWarden, its detection status
 // (api/status next to this page) carries each printer's last checked
 // snapshot: failure boxes, moved-part cells, score and level. They are drawn
 // on that frame in each printer's AI Monitor card. Served anywhere else the
@@ -1792,8 +1792,9 @@ function renderWatch(t) {
   if (watching && !moved && w.motion?.state === "candidate") text += " · part changed?";
   t.aistate.textContent = text;
   t.aistate.className = "aistate " + level;
+  t.aistate.href = w ? "label/?frames=" + encodeURIComponent(w.name) : "label/";
   t.aistate.title = (snap ? `Last check ${watchAgo(snap.t)} ago. ` : "")
-    + "Boxes on the camera: colored by problem type as on the label page: red spaghetti (Obico, unnamed), orange dashed part moved, named boxes from the problem-type detector (trial). Opens Print Watch.";
+    + "Boxes on the camera: colored by problem type as on the label page: red spaghetti (Obico, unnamed), orange dashed part moved, named boxes from the problem-type detector (trial). Opens this print's flagged frames.";
 }
 
 // Problem types from the server's own detector (same keys as its training labels)
@@ -1961,7 +1962,7 @@ async function fetchWatch() {
   try {
     const res = await fetch(WATCH_API, { cache: "no-store" });
     const data = res.ok ? await res.json() : null;
-    if (!Array.isArray(data?.printers)) throw new Error("no Print Watch here");
+    if (!Array.isArray(data?.printers)) throw new Error("no PrintWarden server here");
     watchOn = true;
     watchMeta = { interval: data.interval, model_ready: data.model_ready, model_error: data.model_error };
     tiles.forEach((t) => {
@@ -1988,9 +1989,9 @@ async function pollWatch() {
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) fetchWatch(); });
 
-// --- Print Watch settings ---------------------------------------------
+// --- Server settings --------------------------------------------------
 // The server's own settings, shown when this page is served by
-// TimelapseOffload. Per-printer ones sit under each printer's row in the
+// PrintWarden. Per-printer ones sit under each printer's row in the
 // Printers… dialog (matched by host); the rest are in their own section.
 // Save writes them to the server before the browser-side list.
 let pwSettings = null, pwOriginal = "", pwHookClear = false;
@@ -2457,7 +2458,7 @@ $("exportSettings").addEventListener("click", () => {
   data.printers = readRows();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify({ printerMonitor: 1, settings: data }, null, 2)], { type: "application/json" }));
-  a.download = "printer-monitor-settings.json";
+  a.download = "printwarden-settings.json";
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
@@ -2469,7 +2470,7 @@ $("importFile").addEventListener("change", async (e) => {
   let parsed;
   try { parsed = JSON.parse(await file.text()); } catch { alert("That file isn't valid JSON."); return; }
   const settings = parsed && parsed.printerMonitor && parsed.settings;
-  if (!settings || !Array.isArray(settings.printers)) { alert("That file isn't a Printer Monitor settings export."); return; }
+  if (!settings || !Array.isArray(settings.printers)) { alert("That file isn't a PrintWarden settings export."); return; }
   for (const [k, v] of Object.entries(settings)) store.set(k, v);
   location.reload();
 });

@@ -1,6 +1,6 @@
 """Labelled frames for training better failure detection.
 
-A frame comes from a printer's camera (the camera button on Printer Monitor) or
+A frame comes from a printer's camera (the camera button on PrintWarden) or
 from a flagged frame, and is stored in <data>/training as <id>.jpg with an
 <id>.json next to it: printer, time, size, verdict, boxes [{x, y, w, h, label}]
 in image pixels, and a note. /api/training/export.zip packs them as a YOLO
@@ -198,7 +198,7 @@ def _export(d: Path) -> bytes:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
         z.writestr("classes.txt", "\n".join(names) + "\n")
         z.writestr("README.txt",
-                   "Frames labelled on Printer Monitor.\n"
+                   "Frames labelled on PrintWarden.\n"
                    "images/ + labels/: YOLO format (class cx cy w h, 0..1), classes in classes.txt.\n"
                    "A frame marked 'fine' has an empty label file (a negative example).\n"
                    "json/: the full record per frame (verdict, note, printer, source, boxes in pixels).\n")

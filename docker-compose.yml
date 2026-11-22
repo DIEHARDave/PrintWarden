@@ -1,10 +1,10 @@
 version: "3.8"
 
 services:
-  timelapse-offload:
+  printwarden:
     build: .
-    image: timelapse-offload:latest
-    container_name: timelapse-offload
+    image: printwarden:latest
+    container_name: printwarden
     restart: unless-stopped
     ports:
       - "8095:8095"   # monitor + settings page

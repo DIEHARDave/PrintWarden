@@ -234,7 +234,7 @@ class Moonraker:
             raise MoonrakerError(f"only {free / 1e6:.0f} MB free in '{zip_root}', "
                                  f"zip needs {need / 1e6:.0f} MB")
 
-        name = f"timelapse_offload_{frames[0]['modified']:.0f}.zip"
+        name = f"printwarden_{frames[0]['modified']:.0f}.zip"
         body = {"dest": f"{zip_root}/{name}", "store_only": True,
                 "items": [f"{FRAMES_ROOT}/{f['path']}" for f in frames]}
         async with self.session.post(self.printer.base_url + "/server/files/zip", json=body,

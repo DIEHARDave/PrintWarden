@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from timelapse_offload import motion
+from printwarden import motion
 
 W, H = 640, 360
 STEP = 10          # seconds between snapshots

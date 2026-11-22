@@ -84,7 +84,7 @@ textarea { width: 100%; min-height: 60px; font: inherit; font-size: 13px; color:
   <span class="spacer"></span>
   <a id="listLink" href="label/" hidden>All frames</a>
   <a href="api/training/export.zip" title="Every labelled frame as a YOLO dataset (images, labels, classes.txt) plus the JSON records">Export</a>
-  <a href="./">Printer Monitor</a>
+  <a href="./">PrintWarden</a>
 </header>
 <main>
   <div class="center" id="loading">Loading…</div>
@@ -330,8 +330,8 @@ async function showList() {
   const done = d.items.filter((i) => i.verdict).length;
   $("meta").textContent = `${d.items.length} frame${d.items.length === 1 ? "" : "s"}, ${done} labelled`;
   $("listHint").textContent = d.items.length
-    ? "Frames taken with the camera button on Printer Monitor, or copied from flagged frames. Click one to label it. Export downloads the labelled ones as a YOLO dataset."
-    : "No frames yet. Use the camera button at the bottom of a printer's camera on Printer Monitor, or the ✎ on a flagged frame in its Activity list.";
+    ? "Frames taken with the camera button on PrintWarden, or copied from flagged frames. Click one to label it. Export downloads the labelled ones as a YOLO dataset."
+    : "No frames yet. Use the camera button at the bottom of a printer's camera on PrintWarden, or a flagged frame in its Activity list.";
   $("gallery").innerHTML = d.items.map((i) => {
     const counts = {};
     (i.boxes || []).forEach((b) => { counts[b.label] = (counts[b.label] || 0) + 1; });

@@ -7,7 +7,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY timelapse_offload ./timelapse_offload
+COPY printwarden ./printwarden
 
 RUN useradd --uid 1000 --create-home app \
     && mkdir -p /config /work /data /output \
@@ -15,6 +15,6 @@ RUN useradd --uid 1000 --create-home app \
 USER app
 
 EXPOSE 8095
-ENV PYTHONUNBUFFERED=1 TIMELAPSE_CONFIG=/config/config.yaml
-ENTRYPOINT ["python", "-m", "timelapse_offload"]
+ENV PYTHONUNBUFFERED=1 PRINTWARDEN_CONFIG=/config/config.yaml
+ENTRYPOINT ["python", "-m", "printwarden"]
 CMD ["serve"]

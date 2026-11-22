@@ -36,13 +36,14 @@ def _page(name: str) -> web.Response:
 
 
 async def monitor(request: web.Request) -> web.Response:
-    """Printer Monitor (github.com/DIEHARDave/printer-monitor, copied into web/monitor.html):
-    live cameras, screens, cards and spools, with Print Watch's boxes drawn over the video."""
+    """The PrintWarden page: live cameras, screens, cards and spools, with the
+    detectors' boxes drawn over the video."""
     return _page("monitor.html")
 
 
-async def to_watch(request: web.Request) -> web.Response:
-    raise web.HTTPFound("/watch/")
+async def to_main(request: web.Request) -> web.Response:
+    """The old Print Watch page is gone; its features are on the main page."""
+    raise web.HTTPFound("/")
 
 
 async def to_label(request: web.Request) -> web.Response:
@@ -52,11 +53,6 @@ async def to_label(request: web.Request) -> web.Response:
 async def label_page(request: web.Request) -> web.Response:
     """Mark a camera frame: draw boxes round problems and pick their type."""
     return _page("label.html")
-
-
-async def index(request: web.Request) -> web.Response:
-    """Print Watch: detection details and settings."""
-    return _page("index.html")
 
 
 async def status(request: web.Request) -> web.Response:
@@ -214,7 +210,7 @@ async def put_settings(request: web.Request) -> web.Response:
 
 async def set_detect(request: web.Request) -> web.Response:
     """Change one printer's spaghetti ({"detect": ...}) or moved-part ({"motion": ...})
-    mode: off, alert or pause (the chips on Printer Monitor's AI Monitor card)."""
+    mode: off, alert or pause (the chips on the AI Monitor card)."""
     sup = request.app["sup"]
     name = request.match_info["name"]
     try:
@@ -291,7 +287,7 @@ async def test_notify(request: web.Request) -> web.Response:
         return web.json_response({"error": "save a Discord webhook first"}, status=400)
     det = next((d for d, _ in sup.detectors.values()), None)
     snap = det.snap if det else None
-    await sup.notifier.send(det.mr, "Test from TimelapseOffload",
+    await sup.notifier.send(det.mr, "Test from PrintWarden",
                             "Failure-detection alerts will look like this.", 0x3D8BE8, snap)
     return web.json_response({"ok": True})
 
@@ -301,8 +297,8 @@ async def start(sup) -> web.AppRunner:
     app["sup"] = sup
     app.add_routes([
         web.get("/", monitor),
-        web.get("/watch", to_watch),
-        web.get("/watch/", index),
+        web.get("/watch", to_main),
+        web.get("/watch/", to_main),
         web.get("/api/status", status),
         web.get("/api/printers/{name}/snapshot.jpg", snapshot),
         web.post("/api/printers/{name}/ignore", ignore),
