@@ -883,7 +883,7 @@ $("rowsList").addEventListener("change", (e) => {
 });
 document.addEventListener("click", (e) => { if (!e.target.closest("#rowsMenu")) $("rowsMenu").open = false; });
 // Every row as tall as its tallest copy across the printers, its content
-// centred, so rows and columns stay level whatever each card holds
+// centered, so rows and columns stay level whatever each card holds
 let eqQueued = false;
 const rowObserver = new ResizeObserver(() => equalizeRows());
 function equalizeRows() {
