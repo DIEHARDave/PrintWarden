@@ -95,6 +95,10 @@
   .tile > .video, .tile > .progress, .tile > .file { order: var(--o-cam, 1); }
   .tile > .screen { order: var(--o-screen, 2); }
   .tile > .card { order: var(--o-card, 3); }
+  .tile > .aimon { order: var(--o-ai, 5); }
+  /* Rows left out in the Rows pickers */
+  .no-cam .tile > .video, .no-cam .tile > .progress, .no-cam .tile > .file { display: none; }
+  .no-ai .tile > .aimon { display: none; }
   .video { border-top: 1px solid var(--border); }
   .head {
     display: flex; align-items: center; gap: 6px;
@@ -141,62 +145,18 @@
   .video .logo.bg-dark { background: rgba(0, 0, 0, .55); }
   .video .logo.bg-none { padding: 0; background: none; }
   .video .logo[hidden], .no-logos .video .logo { display: none; }
-  /* Print Watch detection overlay: boxes from its last checked snapshot,
-     drawn in snapshot pixels and transformed like the camera image */
-  .video svg.ov {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    z-index: 1; pointer-events: none; overflow: hidden;
-  }
-  /* Bottom of the camera: the detection badge, and under it the Activity
-     list, which opens upward over the picture */
+  /* Bottom right of the camera: capture this frame for training data */
   .video .vfoot {
-    position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
-    display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
-    padding: 5px; pointer-events: none; cursor: auto;
+    position: absolute; right: 0; bottom: 0; z-index: 2;
+    display: flex; padding: 5px; cursor: auto;
   }
-  .video .vfoot > * { pointer-events: auto; }
-  .video .vfoot > .vrow { pointer-events: none; }
-  .video .vrow { align-self: stretch; display: flex; align-items: flex-end; gap: 4px; }
-  .video .vrow > * { pointer-events: auto; }
-  /* Capture this frame for training data (opens the label page) */
   .video .wsnap {
-    margin-left: auto; flex: none;
     display: grid; place-items: center; width: 26px; height: 22px; padding: 0;
     background: rgba(0, 0, 0, .62); color: #fff; border: 0; border-radius: 5px; cursor: pointer;
   }
   .video .wsnap:hover { outline: 1px solid var(--accent); }
   .video .wsnap svg { width: 15px; height: 15px; }
-  .video .wsnap[hidden], .no-boxes .video .wsnap { display: none; }
-  .video .wactov .tw { position: relative; flex: none; }
-  .video .wactov .tw .lb {
-    position: absolute; right: 2px; top: 2px; padding: 0 4px; border-radius: 3px;
-    background: rgba(0, 0, 0, .75); color: #fff; font-size: 11px; line-height: 15px; text-decoration: none;
-  }
-  .video .wactov .tw .lb:hover { outline: 1px solid var(--accent); }
-  .video .wactov {
-    flex: 1; min-width: 0;
-    background: rgba(0, 0, 0, .72); color: #e6e6e6; border-radius: 5px;
-    font-size: 11.5px; padding: 2px 8px;
-  }
-  .video .wactov[hidden], .no-boxes .video .wactov { display: none; }
-  .video .wactov summary { cursor: pointer; color: #cfd3d8; line-height: 18px; }
-  .video .wactov[open], .video .wactov details[open] { padding-bottom: 4px; }
-  .video .wactov .wbody { max-height: calc(var(--tile-w, 360px) * 0.42); overflow: auto; }
-  .video .wactov .events { list-style: none; padding: 0; margin: 3px 0 0; display: grid; gap: 1px; color: #b9bec6; }
-  .video .wactov .events b { color: #fff; font-weight: 500; }
-  .video .wactov .thumbs { display: flex; gap: 5px; overflow-x: auto; margin-top: 5px; }
-  .video .wactov .thumbs img { height: 48px; border-radius: 3px; display: block; }
-  .video .wbadge {
-    max-width: 100%;
-    padding: 1px 7px; border-radius: 4px;
-    background: rgba(0, 0, 0, .62); color: #fff;
-    font-size: 11px; text-decoration: none; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis;
-  }
-  .video .wbadge:hover { outline: 1px solid var(--accent); }
-  .video .wbadge.warning { background: rgba(208, 138, 18, .9); }
-  .video .wbadge.failing { background: rgba(210, 63, 63, .92); }
-  .video .wbadge[hidden], .no-boxes .video svg.ov, .no-boxes .video .wbadge { display: none; }
+  .video .wsnap[hidden] { display: none; }
   /* Print Watch chips in the tile header: timelapse handling, and the
      detection mode (click to step off > alert > alert + pause) */
   .head .wchips { display: inline-flex; gap: 4px; flex: none; }
@@ -211,28 +171,60 @@
   .head button.wchip.pause { color: var(--warn); }
   .head button.wchip:disabled { opacity: .5; cursor: default; }
   .compact .head .wchip.tl { display: none; }
-  /* Detection row: Print Watch's score, history, part position, activity */
-  .tile > .wrow { order: 40; }
-  .wrow { border-top: 1px solid var(--border); padding: 6px 7px; display: grid; gap: 5px; font-size: 12px; }
-  .wrow[hidden], .no-boxes .wrow { display: none; }
-  .wrow .wline { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; }
-  .wrow .lbl { color: var(--muted); }
-  .wrow .val { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; min-width: 64px; white-space: nowrap; }
-  .wrow .meter {
+  /* AI Monitor card: the last checked frame with every detection drawn on
+     it, the scores, and the alert history */
+  .aimon { border-top: 1px solid var(--border); font-size: 12px; }
+  .aimon .aihead { display: flex; align-items: center; gap: 8px; padding: 4px 7px; min-height: 24px; white-space: nowrap; }
+  .aimon .aititle { font-weight: 600; }
+  .aimon .aistate { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); text-decoration: none; }
+  .aimon .aistate:hover { text-decoration: underline; }
+  .aimon .aistate.warning { color: var(--warn); font-weight: 600; }
+  .aimon .aistate.failing { color: var(--err); font-weight: 600; }
+  .aimon .aiimg { position: relative; aspect-ratio: var(--ar, 4 / 3); background: var(--video-bg); }
+  .aimon .aiimg img, .aimon .aiimg svg.ov {
+    position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  }
+  .aimon .aiimg img { object-fit: var(--fit, contain); }
+  .aimon .aiimg svg.ov { pointer-events: none; overflow: hidden; }
+  .aimon .aiimg img[hidden] { display: none; }
+  .aimon .aimsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #9aa0aa; text-align: center; padding: 8px; }
+  .aimon .aimsg[hidden] { display: none; }
+  .aimon .aiage {
+    position: absolute; right: 5px; bottom: 5px; padding: 0 6px; border-radius: 4px;
+    background: rgba(0, 0, 0, .6); color: #fff; font-size: 11px; line-height: 16px;
+  }
+  .aimon .aiage[hidden] { display: none; }
+  .aimon .aibody { padding: 6px 7px 2px; display: grid; gap: 5px; }
+  .aimon .aibody[hidden], .aimon .aiact[hidden] { display: none; }
+  .aimon .aiact { padding: 4px 7px 6px; }
+  .aimon .wline { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; }
+  .aimon .lbl { color: var(--muted); }
+  .aimon .val { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; min-width: 64px; white-space: nowrap; }
+  .aimon .meter {
     position: relative; height: 7px; border-radius: 4px; overflow: hidden;
     background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 35%, transparent) 0 33.3%,
       color-mix(in srgb, var(--warn) 35%, transparent) 33.3% 66.6%, color-mix(in srgb, var(--err) 35%, transparent) 66.6%);
   }
-  .wrow .meter > i { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--text); border-radius: 2px; }
-  .wrow .spark { width: 100%; height: 30px; display: block; }
-  .wrow .wact { display: flex; gap: 6px; flex-wrap: wrap; }
-  .wrow details summary { cursor: pointer; color: var(--muted); }
-  .wrow .events { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 1px; color: var(--muted); }
-  .wrow .events b { color: var(--text); font-weight: 500; }
-  .wrow .thumbs { display: flex; gap: 5px; overflow-x: auto; margin-top: 5px; }
-  .wrow .thumbs img { height: 48px; border-radius: 3px; display: block; }
-  .wrow .werr { color: var(--err); }
-  .wrow .wmuted { color: var(--muted); }
+  .aimon .meter > i { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--text); border-radius: 2px; }
+  .aimon .spark { width: 100%; height: 30px; display: block; }
+  .aimon .wact { display: flex; gap: 6px; flex-wrap: wrap; }
+  .aimon details summary { cursor: pointer; color: var(--muted); }
+  .aimon .wbody { max-height: calc(var(--tile-w, 360px) * 0.5); overflow: auto; }
+  .aimon .events { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 1px; color: var(--muted); }
+  .aimon .events b { color: var(--text); font-weight: 500; }
+  .aimon .thumbs { display: flex; gap: 5px; overflow-x: auto; margin-top: 5px; }
+  .aimon .thumbs img { height: 48px; border-radius: 3px; display: block; }
+  .aimon .tw { position: relative; flex: none; }
+  .aimon .tw .lb {
+    position: absolute; right: 2px; top: 2px; padding: 0 4px; border-radius: 3px;
+    background: rgba(0, 0, 0, .75); color: #fff; font-size: 11px; line-height: 15px; text-decoration: none;
+  }
+  .aimon .tw .lb:hover { outline: 1px solid var(--accent); }
+  .aimon .werr { color: var(--err); }
+  .aimon .wmuted { color: var(--muted); }
+  /* Rows pickers in the toolbar */
+  .bar .rowsbar { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); flex-wrap: wrap; }
+  .bar .rowsbar select.add { color: var(--muted); }
   .tile.watch-warning { border-color: var(--warn); }
   .tile.watch-failing { border-color: var(--err); box-shadow: 0 0 0 1px var(--err); }
   .bar a.wlink {
@@ -333,7 +325,7 @@
   /* Fourth row, always right under the card: the spools loaded in each
      lane, like Mainsail's AFC panel. Lanes from Moonraker's lane_data,
      names and weights from Spoolman. */
-  .tile > .spools { order: var(--o-spools, 7); }
+  .tile > .spools { order: var(--o-spools, 4); }
   .spools { border-top: 1px solid var(--border); padding: 6px 6px 4px; }
   .no-spools .spools { display: none; }
   .spools .lanes {
@@ -499,26 +491,13 @@
   </label>
   <label><input id="compact" type="checkbox"> Compact</label>
   <label><input id="logos" type="checkbox"> Logos</label>
-  <label><input id="screens" type="checkbox"> Screens</label>
-  <label title="Mainsail-style printer card: print thumbnail, status and temperatures"><input id="cards" type="checkbox"> Cards</label>
-  <label title="Spools loaded in each lane, with Spoolman names and weights. The spools row always sits under the card."><input id="spools" type="checkbox"> Spools</label>
-  <label title="Order of the rows in each printer's column">Rows
-    <select id="rowOrder">
-      <option value="cam,screen,card">Camera › Screen › Card</option>
-      <option value="cam,card,screen">Camera › Card › Screen</option>
-      <option value="screen,cam,card">Screen › Camera › Card</option>
-      <option value="screen,card,cam">Screen › Card › Camera</option>
-      <option value="card,cam,screen">Card › Camera › Screen</option>
-      <option value="card,screen,cam">Card › Screen › Camera</option>
-    </select>
-  </label>
+  <span class="rowsbar" title="The rows in each printer's column, top to bottom. Pick a row in the last box to add it; pick “Remove” to drop one.">Rows <span id="rowPicks"></span></span>
   <label title="Zoomed: clicking a screen opens it large, and touches go to the printer there. Inline: clicks on the small screens go straight to the printer.">Screen touch
     <select id="touch">
       <option value="zoom">Zoomed</option>
       <option value="inline">Inline</option>
     </select>
   </label>
-  <label id="boxesLbl" hidden title="Print Watch: failure and moved-part boxes over the video, and each printer's detection row"><input id="boxes" type="checkbox"> Detection</label>
   <span class="spacer"></span>
   <a class="wlink" id="watchLink" href="watch/" hidden title="Detection details, alert history and settings">Print Watch</a>
   <button id="settingsBtn" type="button">Printers…</button>
@@ -658,9 +637,27 @@ let printers = store.get("printers", null) || structuredClone(DEFAULT_PRINTERS);
   if (migrated) store.set("printers", printers);
 }
 const view = Object.assign(
-  { size: 360, gap: 6, ar: "4 / 3", fit: "contain", compact: false, screens: true, touch: false, logos: true, cards: true, spools: true, boxes: true, rowOrder: "cam,screen,card" },
+  { size: 360, gap: 6, ar: "4 / 3", fit: "contain", compact: false, touch: false, logos: true },
   store.get("view", {})
 );
+// Rows of each printer's column, top to bottom. Lists saved before the row
+// pickers had a fixed order plus on/off boxes: carry those over once.
+const ROW_NAMES = { cam: "Camera", screen: "Screen", card: "Card", spools: "Spools", ai: "AI Monitor" };
+if (!Array.isArray(view.rows)) {
+  const rows = (view.rowOrder || "cam,screen,card").split(",")
+    .filter((r) => !(r === "screen" && view.screens === false) && !(r === "card" && view.cards === false));
+  if (view.spools !== false) {
+    const i = rows.indexOf("card");
+    if (i >= 0) rows.splice(i + 1, 0, "spools"); else rows.push("spools");
+  }
+  if (view.boxes !== false) rows.push("ai");
+  view.rows = rows;
+  for (const k of ["rowOrder", "screens", "cards", "spools", "boxes"]) delete view[k];
+}
+view.rows = view.rows.filter((r, i, a) => ROW_NAMES[r] && a.indexOf(r) === i);
+if (!view.rows.length) view.rows = ["cam"];
+// What the rest of the page asks: is this row shown?
+const showRow = (r) => view.rows.includes(r) && (r !== "ai" || watchOn);
 let spoolmanBase = store.get("spoolman", DEFAULT_SPOOLMAN);
 
 // --- helpers ----------------------------------------------------------
@@ -787,24 +784,9 @@ function applyView() {
   document.body.classList.toggle("touch", view.touch);
   document.body.classList.toggle("no-logos", !view.logos);
   $("logos").checked = view.logos;
-  const screensChanged = document.body.classList.contains("no-screens") === view.screens;
-  document.body.classList.toggle("no-screens", !view.screens);
-  if (screensChanged) tiles.forEach(view.screens ? startScreen : stopScreen);
-  $("screens").checked = view.screens;
   $("touch").value = view.touch ? "inline" : "zoom";
-  document.body.classList.toggle("no-cards", !view.cards);
-  $("cards").checked = view.cards;
-  const spoolsChanged = document.body.classList.contains("no-spools") === view.spools;
-  document.body.classList.toggle("no-spools", !view.spools);
-  if (spoolsChanged && view.spools) refreshSpools();
-  $("spools").checked = view.spools;
-  document.body.classList.toggle("no-boxes", !view.boxes);
-  $("boxes").checked = view.boxes;
+  applyRows();
   tiles.forEach((t) => renderWatch(t));
-  // Even numbers, so the spools row can follow the card at card + 1
-  view.rowOrder.split(",").forEach((row, i) => root.setProperty("--o-" + row, (i + 1) * 2));
-  root.setProperty("--o-spools", (view.rowOrder.split(",").indexOf("card") + 1) * 2 + 1);
-  $("rowOrder").value = view.rowOrder;
   $("size").max = Math.max(1200, view.size);
   $("size").value = view.size; $("sizeVal").textContent = view.size + " px";
   $("gap").value = view.gap; $("gapVal").textContent = view.gap + " px";
@@ -815,6 +797,55 @@ function applyView() {
   store.set("view", view);
   if (view.fitWin) scheduleFit();
 }
+// Rows: CSS order per row, hidden rows switched off (no streams, screens or
+// spool polling for rows nobody sees), and the pickers redrawn
+let rowsWas = null;
+function applyRows() {
+  const root = document.documentElement.style, body = document.body.classList;
+  view.rows.forEach((r, i) => root.setProperty("--o-" + r, i + 1));
+  // First call: buildGrid has started the streams already; screens wait for this
+  const was = rowsWas || { cam: true, screen: false, spools: false };
+  body.toggle("no-cam", !showRow("cam"));
+  body.toggle("no-screens", !showRow("screen"));
+  body.toggle("no-cards", !showRow("card"));
+  body.toggle("no-spools", !showRow("spools"));
+  body.toggle("no-ai", !showRow("ai"));
+  view.screens = showRow("screen");   // read by the screen, spools and fit code
+  view.cards = showRow("card");
+  view.spools = showRow("spools");
+  if (was.cam !== showRow("cam")) tiles.forEach(showRow("cam") ? startStream : stopStream);
+  if (was.screen !== showRow("screen")) tiles.forEach(showRow("screen") ? startScreen : stopScreen);
+  if (!was.spools && showRow("spools")) refreshSpools();
+  rowsWas = { cam: showRow("cam"), screen: showRow("screen"), spools: showRow("spools") };
+  renderRowPicks();
+}
+// One picker per row in use, plus one to add a row while any are left. Each
+// lists only the rows not already picked in another box.
+function renderRowPicks() {
+  const avail = Object.keys(ROW_NAMES).filter((r) => r !== "ai" || watchOn);
+  const rows = view.rows.filter((r) => avail.includes(r));
+  const pick = (i, cur) => `<select data-row="${i}" class="${cur ? "" : "add"}" title="${cur ? `Row ${i + 1}` : "Add a row"}">`
+    + (cur ? "" : '<option value="" selected>+ Add…</option>')
+    + avail.filter((r) => r === cur || !rows.includes(r))
+      .map((r) => `<option value="${r}"${r === cur ? " selected" : ""}>${ROW_NAMES[r]}</option>`).join("")
+    + (cur && rows.length > 1 ? '<option value="">Remove</option>' : "")
+    + "</select>";
+  $("rowPicks").innerHTML = rows.map((r, i) => pick(i, r)).join(" ")
+    + (rows.length < avail.length ? " " + pick(rows.length, "") : "");
+}
+$("rowPicks").addEventListener("change", (e) => {
+  const sel = e.target.closest("select[data-row]");
+  if (!sel) return;
+  const avail = Object.keys(ROW_NAMES).filter((r) => r !== "ai" || watchOn);
+  const hidden = view.rows.filter((r) => !avail.includes(r));   // AI Monitor while unavailable
+  const rows = view.rows.filter((r) => avail.includes(r));
+  const i = +sel.dataset.row;
+  if (!sel.value) rows.splice(i, 1);
+  else if (i < rows.length) rows[i] = sel.value;
+  else rows.push(sel.value);
+  view.rows = rows.concat(hidden);
+  applyView();
+});
 // Moving the slider by hand ends fit-to-window
 $("size").addEventListener("input", (e) => { view.size = +e.target.value; view.fitWin = false; applyView(); });
 $("fitWin").addEventListener("change", (e) => { view.fitWin = e.target.checked; applyView(); });
@@ -840,9 +871,11 @@ function fitWidth() {
   const availH = window.innerHeight - $("bar").offsetHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
 
   const [a, b] = view.ar.split("/").map(Number);
-  let k = b / a;                  // camera
-  if (view.screens) k += 3 / 5;   // screen row
-  if (view.cards) k += 2 / 3;     // card image
+  let k = 0;
+  if (showRow("cam")) k += b / a;     // camera
+  if (showRow("screen")) k += 3 / 5;  // screen row
+  if (showRow("card")) k += 2 / 3;    // card image
+  if (showRow("ai")) k += b / a;      // AI Monitor frame
   // The tallest tile: the spools row differs between printers
   const fixed = Math.max(...vis.map((t) => t.el.offsetHeight - t.el.offsetWidth * k));
 
@@ -884,13 +917,8 @@ $("gap").addEventListener("input", (e) => { view.gap = +e.target.value; applyVie
 $("ar").addEventListener("change", (e) => { view.ar = e.target.value; applyView(); });
 $("fit").addEventListener("change", (e) => { view.fit = e.target.value; applyView(); });
 $("compact").addEventListener("change", (e) => { view.compact = e.target.checked; applyView(); });
-$("screens").addEventListener("change", (e) => { view.screens = e.target.checked; applyView(); });
 $("logos").addEventListener("change", (e) => { view.logos = e.target.checked; applyView(); });
 $("touch").addEventListener("change", (e) => { view.touch = e.target.value === "inline"; applyView(); });
-$("cards").addEventListener("change", (e) => { view.cards = e.target.checked; applyView(); });
-$("spools").addEventListener("change", (e) => { view.spools = e.target.checked; applyView(); });
-$("boxes").addEventListener("change", (e) => { view.boxes = e.target.checked; applyView(); });
-$("rowOrder").addEventListener("change", (e) => { view.rowOrder = e.target.value; applyView(); });
 
 // --- tiles ------------------------------------------------------------
 const tiles = []; // { p, el, img, msg, retry }
@@ -911,7 +939,7 @@ function buildGrid() {
         <span class="temps"></span>
         <span class="wchips"></span>
       </div>
-      <div class="video"><img class="cam" alt=""><img class="logo" alt="" hidden><svg class="ov" aria-hidden="true"></svg><div class="vfoot"><a class="wbadge" href="watch/" target="_blank" rel="noopener" hidden></a><div class="vrow"><div class="wactov" hidden></div><button type="button" class="wsnap" hidden title="Capture this frame for training data: box the problem and say what it is"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button></div></div><div class="msg">Connecting…</div></div>
+      <div class="video"><img class="cam" alt=""><img class="logo" alt="" hidden><div class="vfoot"><button type="button" class="wsnap" hidden title="Capture this frame for training data: box the problem and say what it is"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button></div><div class="msg">Connecting…</div></div>
       <div class="progress"><div></div></div>
       <div class="file"></div>
       ${p.screen
@@ -931,7 +959,12 @@ function buildGrid() {
         <div class="lanes"><div class="smsg">Loading spools…</div></div>
         <div class="sfoot"><span class="sstate"></span><button type="button" class="ssync" disabled title="Set each loaded spool's Location in Spoolman to this printer and lane, and clear it on spools no longer loaded here">Sync</button></div>
       </div>
-      <div class="wrow" hidden></div>`;
+      <div class="aimon">
+        <div class="aihead"><span class="aititle">AI Monitor</span><a class="aistate" href="watch/" target="_blank" rel="noopener"></a></div>
+        <div class="aiimg"><img alt="" hidden><svg class="ov" aria-hidden="true"></svg><div class="aimsg">Not watched by the server</div><span class="aiage" hidden></span></div>
+        <div class="aibody" hidden></div>
+        <div class="aiact" hidden></div>
+      </div>`;
     grid.appendChild(el);
     const t = {
       p, el,
@@ -947,13 +980,16 @@ function buildGrid() {
       heaters: null,     // extruder / chamber objects this printer has
       mainsailName: "",
       msg: el.querySelector(".msg"),
-      ov: el.querySelector("svg.ov"),
-      wbadge: el.querySelector(".wbadge"),
+      ov: el.querySelector(".aiimg svg.ov"),
+      aiimg: el.querySelector(".aiimg img"),
+      aimsg: el.querySelector(".aimsg"),
+      aiage: el.querySelector(".aiage"),
+      aistate: el.querySelector(".aistate"),
+      aibody: el.querySelector(".aibody"),
+      aiact: el.querySelector(".aiact"),
       wchips: el.querySelector(".wchips"),
-      wrow: el.querySelector(".wrow"),
-      wactov: el.querySelector(".wactov"),
       wsnap: el.querySelector(".wsnap"),
-      wOpen: false,      // detection row's Activity list left open
+      wOpen: false,      // AI Monitor's Activity list left open
       watch: null,       // this printer's Print Watch status, when served alongside
       frame: el.querySelector(".screen iframe"),
       retry: null,
@@ -976,6 +1012,7 @@ function buildGrid() {
     loadMainsailMeta(t);
     t.img.style.transform = imgTransform(p);
     t.ov.style.transform = imgTransform(p);
+    t.aiimg.style.transform = imgTransform(p);
     t.img.addEventListener("load", () => { t.msg.style.display = "none"; });
     t.img.addEventListener("error", () => {
       t.msg.textContent = "No video, retrying…";
@@ -985,16 +1022,16 @@ function buildGrid() {
       t.retry = setTimeout(() => startStream(t), RETRY_MS);
     });
     el.querySelector(".video").addEventListener("click", () => openZoom(t));
-    // Clicks on the badge or the Activity list must not open the enlarged view
-    el.querySelector(".vfoot").addEventListener("click", (e) => { if (e.target !== e.currentTarget) e.stopPropagation(); });
-    t.wactov.addEventListener("toggle", (e) => { t.wOpen = e.target.open; }, true);
+    // The capture button must not open the enlarged view
+    el.querySelector(".vfoot").addEventListener("click", (e) => e.stopPropagation());
+    t.aiact.addEventListener("toggle", (e) => { t.wOpen = e.target.open; }, true);
     t.wsnap.addEventListener("click", () => {
       if (t.watch) window.open(`label/?printer=${encodeURIComponent(t.watch.name)}`, "_blank");
     });
     t.wchips.addEventListener("click", (e) => {
       if (e.target.closest("button.wchip")) cycleDetect(t, e.target.closest("button.wchip"));
     });
-    t.wrow.addEventListener("click", (e) => { if (e.target.closest(".wignore")) notFailure(t); });
+    t.aibody.addEventListener("click", (e) => { if (e.target.closest(".wignore")) notFailure(t); });
 
     tiles.push(t);
   });
@@ -1003,7 +1040,7 @@ function buildGrid() {
 }
 
 function startStream(t) {
-  if (t.p.show === false || document.hidden) return;
+  if (t.p.show === false || document.hidden || !showRow("cam")) return;
   // Cache-buster so a reconnect opens a fresh stream instead of a stale one
   const url = streamUrl(t.p);
   t.img.src = url + (url.includes("?") ? "&" : "?") + "_t=" + Date.now();
@@ -1531,8 +1568,9 @@ async function syncSpools(t) {
 // When this page is served by TimelapseOffload, its Print Watch status
 // (api/status next to this page) carries each printer's last checked
 // snapshot: failure boxes, moved-part cells, score and level. They are drawn
-// over the live video. Served anywhere else the request fails and the page
-// looks the same as before (it checks again every minute).
+// on that frame in each printer's AI Monitor card. Served anywhere else the
+// request fails, the AI Monitor row is not offered, and the page looks the
+// same as before (it checks again every minute).
 const WATCH_API = "api/status";
 const WATCH_INTERVAL_MS = 5000;
 const WATCH_LEVEL = { ok: "Looks fine", warming: "Learning", warning: "Possible failure", failing: "Likely failure" };
@@ -1552,10 +1590,17 @@ function renderWatch(t) {
   t.el.classList.toggle("watch-failing", level === "failing");
   renderChips(t);
   renderRow(t);
-  if (!watching) { t.ov.innerHTML = ""; t.wbadge.hidden = true; return; }
+  t.wsnap.hidden = !w;
 
-  const fail = snap?.boxes || [], cells = w.motion?.cells || [], types = w.faults?.boxes || [];
+  const fail = snap?.boxes || [], cells = w?.motion?.cells || [], types = w?.faults?.boxes || [];
   if (snap && snap.size?.[0]) {
+    // The frame the detectors looked at, with what they found drawn on it
+    const src = `api/printers/${encodeURIComponent(w.name)}/snapshot.jpg?t=${Math.round(snap.t)}`;
+    if (t.aiimg.dataset.src !== src) { t.aiimg.src = src; t.aiimg.dataset.src = src; }
+    t.aiimg.hidden = false;
+    t.aimsg.hidden = true;
+    t.aiage.textContent = `checked ${watchAgo(snap.t)} ago`;
+    t.aiage.hidden = false;
     const [sw, sh] = snap.size;
     t.ov.setAttribute("viewBox", `0 0 ${sw} ${sh}`);
     t.ov.setAttribute("preserveAspectRatio", view.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet");
@@ -1571,21 +1616,26 @@ function renderWatch(t) {
       })).join("");
   } else {
     t.ov.innerHTML = "";
+    t.aiimg.hidden = true; t.aiage.hidden = true; t.aimsg.hidden = false;
+    delete t.aiimg.dataset.src;
+    t.aimsg.textContent = !w ? "Not watched by the server"
+      : w.detect === "off" ? "Detection is off for this printer"
+      : watching ? "Waiting for the first check…" : "Watching starts when a print starts";
   }
 
   let text;
-  if (w.ignored) text = "Watch: not a failure";
+  if (!w) text = "not watched";
+  else if (!watching) text = w.detect === "off" ? "off" : "idle";
+  else if (w.ignored) text = "Not a failure (this print)";
   else if (moved) text = "Part moved or came loose";
   else if (w.faults?.alerted?.length) text = "Possible " + w.faults.alerted.map((k) => (FAULT_NAMES[k] || k).toLowerCase()).join(", ");
-  else if (!w.frames) text = w.state === "paused" ? "Watch: paused" : "Watch: starting";
-  else if (w.level === "warming") text = `Watch: learning ${w.frames}/${w.safe_frames}`;
+  else if (!w.frames) text = w.state === "paused" ? "Paused" : "Starting";
+  else if (w.level === "warming") text = `Learning ${w.frames}/${w.safe_frames}`;
   else text = `${WATCH_LEVEL[w.level] || w.level} · ${Math.round((w.score || 0) * 100)}%`;
-  if (!moved && w.motion?.state === "candidate") text += " · part changed?";
-  t.wbadge.textContent = text;
-  t.wbadge.className = "wbadge " + level;
-  t.wbadge.title = (fail.length || cells.length || types.length ? `Boxes from the snapshot checked ${watchAgo(snap.t)} ago. ` : "")
-    + "Open Print Watch for details.";
-  t.wbadge.hidden = false;
+  if (watching && !moved && w.motion?.state === "candidate") text += " · part changed?";
+  t.aistate.textContent = text;
+  t.aistate.className = "aistate " + level;
+  t.aistate.title = "Yellow: spaghetti (Obico). Red dashed: part moved. Cyan: problem type (trial). Opens Print Watch.";
 }
 
 // Problem types from the server's own detector (same keys as its training labels)
@@ -1638,8 +1688,7 @@ const MOTION_TEXT = { learning: ["Learning the scene", "text"], ok: ["Not moved"
   candidate: ["Changed, checking it stays", "warn"], moved: ["Moved or came loose", "err"] };
 function renderRow(t) {
   const w = t.watch;
-  t.wsnap.hidden = !w;
-  if (!w) { t.wrow.hidden = true; t.wrow.innerHTML = ""; t.wactov.hidden = true; t.wactov.innerHTML = ""; return; }
+  if (!w) { t.aibody.hidden = true; t.aibody.innerHTML = ""; t.aiact.hidden = true; t.aiact.innerHTML = ""; t.aiact.dataset.html = ""; return; }
   const watching = w.detect !== "off" && (w.state === "printing" || w.state === "paused");
   const parts = [];
   if (watching) {
@@ -1665,10 +1714,10 @@ function renderRow(t) {
     else parts.push('<div class="wact"><button type="button" class="wignore" title="Stop alerts for the rest of this print">Not a failure</button></div>');
   }
   if (w.error) parts.push(`<div class="werr">${esc(w.error)}</div>`);
-  t.wrow.hidden = !parts.length;
-  t.wrow.innerHTML = parts.join("");
+  t.aibody.hidden = !parts.length;
+  t.aibody.innerHTML = parts.join("");
 
-  // Activity sits on the bottom of the camera and opens over it
+  // Alert history and flagged frames
   const flagged = w.flagged || [], events = w.events || [];
   if (events.length || flagged.length) {
     const url = (f) => `api/printers/${encodeURIComponent(w.name)}/flagged/${encodeURIComponent(f)}`;
@@ -1676,15 +1725,16 @@ function renderRow(t) {
       <div class="wbody"><ul class="events">${events.slice(0, 8).map((e) => `<li>${new Date(e.t * 1000).toLocaleTimeString()} <b>${esc(e.text)}</b></li>`).join("")}</ul>
       ${flagged.length ? `<div class="thumbs">${flagged.map((f) => `<span class="tw"><a href="${url(f)}" target="_blank" rel="noopener" title="${esc(f)}"><img loading="lazy" src="${url(f)}" alt=""></a><a class="lb" href="label/?flagged=${encodeURIComponent(w.name + "/" + f)}" target="_blank" rel="noopener" title="Label this frame for training data (for example mark a false alarm)">✎</a></span>`).join("")}</div>` : ""}</div></details>`;
     // Only rewrite when it changed, so an open list keeps its scroll position
-    if (t.wactov.dataset.html !== html) { t.wactov.innerHTML = html; t.wactov.dataset.html = html; }
-    t.wactov.hidden = false;
+    if (t.aiact.dataset.html !== html) { t.aiact.innerHTML = html; t.aiact.dataset.html = html; }
+    t.aiact.hidden = false;
   } else {
-    t.wactov.hidden = true; t.wactov.innerHTML = ""; t.wactov.dataset.html = "";
+    t.aiact.hidden = true; t.aiact.innerHTML = ""; t.aiact.dataset.html = "";
   }
 }
 
 let watchMeta = null;   // { interval, model_ready, model_error }
 async function fetchWatch() {
+  const was = watchOn;
   try {
     const res = await fetch(WATCH_API, { cache: "no-store" });
     const data = res.ok ? await res.json() : null;
@@ -1700,7 +1750,7 @@ async function fetchWatch() {
     watchOn = false;
   }
   $("watchLink").hidden = !watchOn;
-  $("boxesLbl").hidden = !watchOn;
+  if (was !== watchOn) { applyRows(); if (view.fitWin) scheduleFit(); }
   $("watchLink").title = !watchMeta ? "" : watchMeta.model_error ? "Detection model: " + watchMeta.model_error
     : watchMeta.model_ready ? `Checking every ${watchMeta.interval}s while printing` : "Detection model loads on first print";
   return watchOn;
