@@ -166,9 +166,9 @@ function drawBoxes() {
   const fs = Math.max(12, w / 70);
   // What the detectors found (a flagged frame), thin and dashed under the user's boxes
   const ref = !detected || !$("refShow").checked ? "" : `<g pointer-events="none" opacity=".9">`
-    + (detected.boxes || []).map((b) => `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#ffd23f" stroke-width="2" stroke-dasharray="8 5" vector-effect="non-scaling-stroke"/>`).join("")
-    + (detected.cells || []).map(([x, y, cw, ch]) => `<rect x="${x}" y="${y}" width="${cw}" height="${ch}" fill="rgba(255,80,80,.15)" stroke="#ff5050" stroke-width="2" stroke-dasharray="8 5" vector-effect="non-scaling-stroke"/>`).join("")
-    + (detected.faults || []).map((b) => `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#36cfc9" stroke-width="2" stroke-dasharray="8 5" vector-effect="non-scaling-stroke"/>`).join("")
+    + (detected.boxes || []).map((b) => `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="${color("spaghetti")}" stroke-width="2" stroke-dasharray="8 5" vector-effect="non-scaling-stroke"/>`).join("")
+    + (detected.cells || []).map(([x, y, cw, ch]) => `<rect x="${x}" y="${y}" width="${cw}" height="${ch}" fill="rgba(255,169,64,.15)" stroke="${color("detached")}" stroke-width="2" stroke-dasharray="8 5" vector-effect="non-scaling-stroke"/>`).join("")
+    + (detected.faults || []).map((b) => `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="${color(FAULT_TYPES(b.label))}" stroke-width="2" stroke-dasharray="8 5" vector-effect="non-scaling-stroke"/>`).join("")
     + "</g>";
   $("svg").innerHTML = ref + boxes.map((b, i) => `<g data-i="${i}">
     <rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" stroke="${color(b.label)}" fill="${color(b.label)}" class="${i === sel ? "sel" : ""}"/>
@@ -300,11 +300,11 @@ async function loadDetected(f) {
   const lines = [];
   if (info.reason) lines.push(info.reason);
   const sp = info.boxes || [];
-  if (sp.length) lines.push(`Yellow: spaghetti (Obico), ${sp.length} box${sp.length > 1 ? "es" : ""}, up to ${Math.round(Math.max(...sp.map((b) => b.conf)) * 100)}%`);
-  if ((info.cells || []).length) lines.push("Red: the area that changed (part moved)");
+  if (sp.length) lines.push(`Red: spaghetti (Obico), ${sp.length} box${sp.length > 1 ? "es" : ""}, up to ${Math.round(Math.max(...sp.map((b) => b.conf)) * 100)}%`);
+  if ((info.cells || []).length) lines.push("Orange: the area that changed (part moved)");
   const ft = {};
   (info.faults || []).forEach((b) => { ft[b.label] = Math.max(ft[b.label] || 0, b.conf); });
-  for (const [k, c] of Object.entries(ft)) lines.push(`Cyan: ${LABELS[k] || k}, ${Math.round(c * 100)}%`);
+  for (const [k, c] of Object.entries(ft)) lines.push(`${LABELS[k] || k} (problem-type detector), ${Math.round(c * 100)}%`);
   if (!sp.length && !(info.cells || []).length && !(info.faults || []).length)
     lines.push(info.error ? "Could not work out the boxes: " + info.error : "Nothing boxed on this frame.");
   if (info.recomputed) lines.push("Frame saved before boxes were recorded: these were worked out again from it (part-moved areas can't be).");
