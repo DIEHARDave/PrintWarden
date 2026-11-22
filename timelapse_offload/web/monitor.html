@@ -392,12 +392,14 @@
   .spools .sfoot button { padding: 1px 8px; font-size: 11px; }
   .spools .sfoot button:disabled { opacity: .45; cursor: default; border-color: var(--border); }
 
-  .zoom iframe {
+  .zoom .zframe {
+    position: relative;
     width: min(100%, calc((100vh - 64px) * var(--zoom-ar, 5 / 3)));
     aspect-ratio: var(--zoom-ar, 5 / 3);
     max-height: calc(100vh - 64px);
-    border: 0; background: #000; cursor: auto;
+    background: #000; cursor: auto;
   }
+  .zoom .zframe iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
   .zoom .hint { position: absolute; bottom: 10px; left: 16px; color: #bbb; font-size: 12px; }
 
   /* Enlarged view */
@@ -1035,6 +1037,7 @@ const tiles = []; // { p, el, img, msg, retry }
 function buildGrid() {
   stopAll();
   rowObserver.disconnect();
+  screenObserver.disconnect();
   tiles.length = 0;
   const grid = $("grid");
   grid.innerHTML = "";
@@ -1120,6 +1123,10 @@ function buildGrid() {
       syncMsg: "",
     };
     el.querySelector(".shield")?.addEventListener("click", () => openScreenZoom(t));
+    if (t.frame) {
+      screenObserver.observe(t.frame.parentElement);
+      screenNative(t).then((n) => { t.screenSize = n; fitFrame(t.frame.parentElement, t.frame, n); });
+    }
     t.ssync.addEventListener("click", () => syncSpools(t));
     t.logo.addEventListener("load", () => { applyLogoBacking(t); t.logo.hidden = false; });
     t.logo.addEventListener("error", () => {
@@ -2182,18 +2189,74 @@ function openScreenZoom(t) {
   $("zoomCap").textContent = displayName(t) + " screen";
   $("zoomHint").textContent = "Clicks on the screen are sent to the printer. Click outside it or press Esc to close.";
   $("zoomImg").style.display = "none";
+  const box = document.createElement("div");
+  box.className = "zframe";
+  // The screen's own shape when known, so the enlarged screen fills its box
+  box.style.setProperty("--zoom-ar", t.screenSize ? `${t.screenSize.w} / ${t.screenSize.h}` : t.p.screenAr || "5 / 3");
   const f = document.createElement("iframe");
   f.title = displayName(t) + " screen";
   f.src = screenUrl(t.p);
-  f.style.setProperty("--zoom-ar", t.p.screenAr || "5 / 3");
-  $("zoom").appendChild(f);
+  box.appendChild(f);
+  $("zoom").appendChild(box);
   $("zoom").classList.add("open");
+  zoomScreen = { box, f, t };
+  requestAnimationFrame(() => fitFrame(box, f, t.screenSize));
 }
+let zoomScreen = null;
 function closeZoom() {
   $("zoom").classList.remove("open");
   $("zoomImg").src = "data:,";
-  $("zoom").querySelectorAll("iframe").forEach((f) => f.remove());
+  $("zoom").querySelectorAll(".zframe").forEach((f) => f.remove());
+  zoomScreen = null;
 }
+window.addEventListener("resize", () => { if (zoomScreen) fitFrame(zoomScreen.box, zoomScreen.f, zoomScreen.t.screenSize); });
+
+// --- screens drawn at their native size and scaled up ------------------
+// Some screen pages (the U1's) show the screen at its native pixel size at
+// most, leaving it small in a bigger row. Such a page is laid out at that
+// native size and the whole frame scaled up to fit, keeping its shape;
+// clicks still land right. Pages already larger than the row are left alone.
+const screenSizes = {};   // screen url -> Promise of { w, h } or null
+function screenNative(t) {
+  const url = screenUrl(t.p);
+  if (!url) return Promise.resolve(null);
+  if (!screenSizes[url]) {
+    screenSizes[url] = (async () => {
+      // The printer's own snapshot of its screen tells the native size
+      const cams = await getCams(t.p.host).catch(() => null);
+      const cam = (cams || []).find((c) => c.service === "iframe" && samePath(c.stream_url, t.p.screen, t.p.host));
+      let snap = cam?.snapshot_url || "";
+      if (snap && !/^https?:\/\//i.test(snap)) snap = `http://${t.p.host}${snap.startsWith("/") ? "" : "/"}${snap}`;
+      if (!snap) snap = url.replace(/\/?$/, "/") + "snapshot";
+      return new Promise((res) => {
+        const i = new Image();
+        i.onload = () => res(i.naturalWidth ? { w: i.naturalWidth, h: i.naturalHeight } : null);
+        i.onerror = () => res(null);
+        i.src = snap + (snap.includes("?") ? "&" : "?") + "_=" + Date.now();
+      });
+    })();
+  }
+  return screenSizes[url];
+}
+function fitFrame(box, frame, n) {
+  const bw = box.clientWidth, bh = box.clientHeight;
+  const s = n && bw && bh ? Math.min(bw / n.w, bh / n.h) : 0;
+  if (s > 1.02) {
+    Object.assign(frame.style, {
+      width: n.w + "px", height: n.h + "px", right: "auto", bottom: "auto",
+      left: (bw - n.w * s) / 2 + "px", top: (bh - n.h * s) / 2 + "px",
+      transformOrigin: "0 0", transform: `scale(${s})`,
+    });
+  } else {
+    for (const k of ["width", "height", "left", "top", "right", "bottom", "transformOrigin", "transform"]) frame.style[k] = "";
+  }
+}
+const screenObserver = new ResizeObserver((entries) => {
+  for (const e of entries) {
+    const t = tiles.find((x) => x.frame && x.frame.parentElement === e.target);
+    if (t) fitFrame(e.target, t.frame, t.screenSize);
+  }
+});
 $("zoom").addEventListener("click", (e) => { if (e.target.tagName !== "IFRAME") closeZoom(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeZoom(); });
 
