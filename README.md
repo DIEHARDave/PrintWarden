@@ -21,15 +21,21 @@ any static web server, or straight from disk.
 - **Spoolman location sync** (optional): sets each loaded spool's Spoolman
   location to `<printer> <lane>` and clears locations that are out of date.
   A spool claimed by two printers is flagged and skipped.
-- **Rows you choose**: the **Rows** boxes in the toolbar set what each
-  printer's column shows, top to bottom: Camera, Screen, Card, Spools and
-  AI Monitor. Each box lists only the rows not picked yet; the last box adds
-  a row, **Remove** drops one. Rows left out stop their streams and polling.
+- **Rows you arrange**: each printer's column has Camera, Screen, Card,
+  Spools and AI Monitor rows. The slim bar on the left of each row has a
+  grip (drag it onto another row to move it) and a fold arrow (fold the row
+  to a thin strip; it keeps running). The **Rows** menu in the toolbar
+  switches rows on or off; rows switched off stop their streams and polling.
+  These apply to every printer alike, so the rows stay level.
+- **Fit to window**: **Width** sizes the tiles to fill the window's width in
+  one line and lets the page scroll down; **Height** fits everything in the
+  window without scrolling.
 - **AI Monitor** (optional): when the page is served by TimelapseOffload
   (the author's timelapse and failure-detection container, not public, which
   has its own copy of this page), it reads that server's detection status
   from `api/status`. Each printer's AI Monitor card shows the last frame the
-  detectors checked with their boxes drawn on it (yellow spaghetti, red
+  detectors checked with their boxes drawn on it (the same boxes are drawn
+  over the live camera) (yellow spaghetti, red
   dashed moved part, cyan problem type), the failure score and its history,
   the part-position check, the problem types seen, **Not a failure**, and the
   alert history with flagged frames (✎ opens a frame on the server's label
