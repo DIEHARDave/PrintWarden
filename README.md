@@ -27,7 +27,7 @@ any static web server, or straight from disk.
   to a thin strip; it keeps running). The **Rows** menu in the toolbar
   switches rows on or off; rows switched off stop their streams and polling.
   These apply to every printer alike, and every row is as tall as its
-  tallest copy (smaller content is centered), so rows and columns stay level.
+  tallest copy (smaller content sits at the top), so rows and columns stay level.
   Card temperature labels shorten to E0/E1/HB when a tile is too narrow.
 - **Fit to window**: **Width** sizes the tiles to fill the window's width in
   one line and lets the page scroll down; **Height** fits everything in the
@@ -40,7 +40,7 @@ any static web server, or straight from disk.
   (click the detection chip to change it) (yellow spaghetti, red
   dashed moved part, cyan problem type), the failure score and its history,
   the part-position check, the problem types seen, **Not a failure**, and the
-  alert history with flagged frames (✎ opens a frame on the server's label
+  alert history with this print's newest six flagged frames (a link opens all of them) (✎ opens a frame on the server's label
   page for training data). The tile border turns
   orange or red on an alert, a camera button on the live camera captures a
   frame for labelling, and **Printers…** gets the server's detection, alert
