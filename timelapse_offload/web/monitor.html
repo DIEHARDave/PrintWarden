@@ -101,7 +101,7 @@
   .tile > .rw[data-row="card"] { order: var(--o-card, 3); }
   .tile > .rw[data-row="spools"] { order: var(--o-spools, 4); }
   .tile > .rw[data-row="ai"] { order: var(--o-ai, 5); }
-  .rw > .rbody { min-width: 0; }
+  .rw > .rbody { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
   .rbar {
     display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 3px;
     border-top: 1px solid var(--border); border-right: 1px solid var(--border);
@@ -201,43 +201,29 @@
   .video .wsnap:hover { outline: 1px solid var(--accent); }
   .video .wsnap svg { width: 15px; height: 15px; }
   .video .wsnap[hidden] { display: none; }
-  /* Print Watch chips in the tile header: timelapse handling, and the
-     detection mode (click to step off > alert > alert + pause) */
-  .head .wchips { display: inline-flex; gap: 4px; flex: none; }
-  .head .wchip {
+  /* AI Monitor card: the last checked frame with every detection drawn on
+     it, the scores, and the alert history */
+  .aimon { border-top: 1px solid var(--border); font-size: 12px; }
+  .aimon .aihead { display: flex; align-items: center; gap: 6px; padding: 4px 7px 0; min-height: 24px; white-space: nowrap; }
+  .aimon .aititle { font-weight: 600; }
+  .aimon .aihead .wchips { margin-left: auto; display: inline-flex; gap: 4px; min-width: 0; }
+  .aimon .wchip {
     font: inherit; font-size: 11px; line-height: 16px; padding: 0 7px;
     border-radius: 999px; border: 1px solid var(--border);
     color: var(--muted); background: transparent; white-space: nowrap;
   }
-  .head button.wchip { cursor: pointer; }
-  .head button.wchip:hover { border-color: var(--accent); }
-  .head button.wchip.alert { color: var(--accent); }
-  .head button.wchip.pause { color: var(--warn); }
-  .head button.wchip:disabled { opacity: .5; cursor: default; }
-  .compact .head .wchip.tl { display: none; }
-  /* AI Monitor card: the last checked frame with every detection drawn on
-     it, the scores, and the alert history */
-  .aimon { border-top: 1px solid var(--border); font-size: 12px; }
-  .aimon .aihead { display: flex; align-items: center; gap: 8px; padding: 4px 7px; min-height: 24px; white-space: nowrap; }
-  .aimon .aititle { font-weight: 600; }
-  .aimon .aistate { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); text-decoration: none; }
+  .aimon button.wchip { cursor: pointer; }
+  .aimon button.wchip:hover { border-color: var(--accent); }
+  .aimon button.wchip.alert { color: var(--accent); }
+  .aimon button.wchip.pause { color: var(--warn); }
+  .aimon button.wchip:disabled { opacity: .5; cursor: default; }
+  .aimon .aistate {
+    display: block; padding: 2px 7px 0; color: var(--muted); text-decoration: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   .aimon .aistate:hover { text-decoration: underline; }
   .aimon .aistate.warning { color: var(--warn); font-weight: 600; }
   .aimon .aistate.failing { color: var(--err); font-weight: 600; }
-  .aimon .aiimg { position: relative; aspect-ratio: var(--ar, 4 / 3); background: var(--video-bg); }
-  .aimon .aiimg img, .aimon .aiimg svg.ov {
-    position: absolute; inset: 0; width: 100%; height: 100%; display: block;
-  }
-  .aimon .aiimg img { object-fit: var(--fit, contain); }
-  .aimon .aiimg svg.ov { pointer-events: none; overflow: hidden; }
-  .aimon .aiimg img[hidden] { display: none; }
-  .aimon .aimsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #9aa0aa; text-align: center; padding: 8px; }
-  .aimon .aimsg[hidden] { display: none; }
-  .aimon .aiage {
-    position: absolute; right: 5px; bottom: 5px; padding: 0 6px; border-radius: 4px;
-    background: rgba(0, 0, 0, .6); color: #fff; font-size: 11px; line-height: 16px;
-  }
-  .aimon .aiage[hidden] { display: none; }
   .aimon .aibody { padding: 6px 7px 2px; display: grid; gap: 5px; }
   .aimon .aibody[hidden], .aimon .aiact[hidden] { display: none; }
   .aimon .aiact { padding: 4px 7px 6px; }
@@ -258,6 +244,7 @@
   .aimon .events b { color: var(--text); font-weight: 500; }
   .aimon .thumbs { display: flex; gap: 5px; overflow-x: auto; margin-top: 5px; }
   .aimon .thumbs img { height: 48px; border-radius: 3px; display: block; }
+  .aimon .thumbs a:hover img { outline: 2px solid var(--accent); }
   .aimon .tw { position: relative; flex: none; }
   .aimon .tw .lb {
     position: absolute; right: 2px; top: 2px; padding: 0 4px; border-radius: 3px;
@@ -879,6 +866,7 @@ function applyRows() {
   if (!was.spools && showRow("spools")) refreshSpools();
   rowsWas = { cam: showRow("cam"), screen: showRow("screen"), spools: showRow("spools") };
   renderRowsMenu();
+  equalizeRows();
 }
 // Rows menu: switch rows on or off. Order and collapse are on each row's bar.
 function renderRowsMenu() {
@@ -894,6 +882,23 @@ $("rowsList").addEventListener("change", (e) => {
   applyView();
 });
 document.addEventListener("click", (e) => { if (!e.target.closest("#rowsMenu")) $("rowsMenu").open = false; });
+// Every row as tall as its tallest copy across the printers, its content
+// centred, so rows and columns stay level whatever each card holds
+let eqQueued = false;
+const rowObserver = new ResizeObserver(() => equalizeRows());
+function equalizeRows() {
+  if (eqQueued) return;
+  eqQueued = true;
+  requestAnimationFrame(() => {
+    eqQueued = false;
+    for (const r of ALL_ROWS) {
+      const bodies = [...document.querySelectorAll(`.tile:not(.hidden) > .rw[data-row="${r}"]:not(.collapsed) > .rbody`)];
+      bodies.forEach((b) => { b.style.minHeight = ""; });
+      const max = Math.max(0, ...bodies.map((b) => b.offsetHeight));
+      bodies.forEach((b) => { b.style.minHeight = max ? max + "px" : ""; });
+    }
+  });
+}
 function toggleCollapse(r) {
   view.collapsed = view.collapsed.includes(r) ? view.collapsed.filter((x) => x !== r) : view.collapsed.concat([r]);
   applyView();
@@ -1020,6 +1025,7 @@ const tiles = []; // { p, el, img, msg, retry }
 
 function buildGrid() {
   stopAll();
+  rowObserver.disconnect();
   tiles.length = 0;
   const grid = $("grid");
   grid.innerHTML = "";
@@ -1032,7 +1038,6 @@ function buildGrid() {
         <span class="name"><a href="${esc(webUrl(p))}" target="_blank" rel="noopener">${esc(p.name || p.host)}</a></span>
         <span class="state">…</span>
         <span class="temps"></span>
-        <span class="wchips"></span>
       </div>
       <div class="rw" data-row="cam"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ Camera</div><div class="rbody">
       <div class="video"><img class="cam" alt=""><img class="logo" alt="" hidden><svg class="ov" aria-hidden="true"></svg><div class="vfoot"><button type="button" class="wsnap" hidden title="Capture this frame for training data: box the problem and say what it is"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button></div><div class="msg">Connecting…</div></div>
@@ -1064,8 +1069,8 @@ function buildGrid() {
       </div></div>
       <div class="rw" data-row="ai"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ AI Monitor</div><div class="rbody">
       <div class="aimon">
-        <div class="aihead"><span class="aititle">AI Monitor</span><a class="aistate" href="watch/" target="_blank" rel="noopener"></a></div>
-        <div class="aiimg"><img alt="" hidden><svg class="ov" aria-hidden="true"></svg><div class="aimsg">Not watched by the server</div><span class="aiage" hidden></span></div>
+        <div class="aihead"><span class="aititle">AI Monitor</span><span class="wchips"></span></div>
+        <a class="aistate" href="watch/" target="_blank" rel="noopener"></a>
         <div class="aibody" hidden></div>
         <div class="aiact" hidden></div>
       </div>
@@ -1085,11 +1090,7 @@ function buildGrid() {
       heaters: null,     // extruder / chamber objects this printer has
       mainsailName: "",
       msg: el.querySelector(".msg"),
-      ov: el.querySelector(".aiimg svg.ov"),
       lov: el.querySelector(".video svg.ov"),
-      aiimg: el.querySelector(".aiimg img"),
-      aimsg: el.querySelector(".aimsg"),
-      aiage: el.querySelector(".aiage"),
       aistate: el.querySelector(".aistate"),
       aibody: el.querySelector(".aibody"),
       aiact: el.querySelector(".aiact"),
@@ -1117,9 +1118,8 @@ function buildGrid() {
     setName(t);
     loadMainsailMeta(t);
     t.img.style.transform = imgTransform(p);
-    t.ov.style.transform = imgTransform(p);
-    t.aiimg.style.transform = imgTransform(p);
     t.lov.style.transform = imgTransform(p);
+    el.querySelectorAll(".rbody").forEach((b) => rowObserver.observe(b));
     el.querySelectorAll(".rw").forEach((w) => {
       w.classList.toggle("collapsed", view.collapsed.includes(w.dataset.row));
       w.querySelector(".rfold").addEventListener("click", () => toggleCollapse(w.dataset.row));
@@ -1311,7 +1311,22 @@ function updateCard(t, s, heaters) {
     if (s["temperature_sensor chamber"]) items.push(["Chamber", s["temperature_sensor chamber"].temperature.toFixed(0) + "°"]);
     if (ps.state === "printing" && progress > 0) items.push(["ETA", eta(t, ps.print_duration, progress)]);
   }
-  t.cprev.innerHTML = items.map(([n, v, on]) => `<div${on ? ' class="active" title="Active extruder"' : ""}><strong>${esc(n)}</strong><span>${esc(v)}</span></div>`).join("");
+  // Full names when they fit; otherwise E0/E1/HB/CH, then also drop the "°" targets
+  const short = (n) => n === "ETA" ? n : n === "Chamber" ? "CH" : /bed/i.test(n) ? "HB"
+    : /^extruder\s*(\d*)$/i.test(n) ? "E" + (n.match(/(\d+)$/)?.[1] ?? (heaters.extruders.length > 1 ? "0" : "")) : n;
+  const draw = (level) => {
+    t.cprev.innerHTML = items.map(([n, v, on]) => `<div${on ? ' class="active" title="Active extruder"' : ""}><strong title="${esc(n)}">${esc(level ? short(n) : n)}</strong><span>${esc(level > 1 ? v.replace("° / ", "/") : v)}</span></div>`).join("");
+  };
+  // The boxes shrink rather than overflow, so add up what each one needs
+  const fits = () => {
+    const kids = [...t.cprev.children];
+    const need = kids.reduce((sum, d) => sum + Math.max(...[...d.children].map((c) => c.scrollWidth)), 0) + 10 * (kids.length - 1);
+    return need <= t.cprev.clientWidth - 8;
+  };
+  for (let level = 0; level < 3; level++) {
+    draw(level);
+    if (!t.cprev.clientWidth || fits()) break;
+  }
 }
 
 // Finish time. Mainsail averages its file and slicer estimates; same here:
@@ -1706,19 +1721,11 @@ function renderWatch(t) {
 
   const fail = snap?.boxes || [], cells = w?.motion?.cells || [], types = w?.faults?.boxes || [];
   if (snap && snap.size?.[0]) {
-    // The frame the detectors looked at, with what they found drawn on it
-    const src = `api/printers/${encodeURIComponent(w.name)}/snapshot.jpg?t=${Math.round(snap.t)}`;
-    if (t.aiimg.dataset.src !== src) { t.aiimg.src = src; t.aiimg.dataset.src = src; }
-    t.aiimg.hidden = false;
-    t.aimsg.hidden = true;
-    t.aiage.textContent = `checked ${watchAgo(snap.t)} ago`;
-    t.aiage.hidden = false;
-    t.lov.setAttribute("viewBox", `0 0 ${snap.size[0]} ${snap.size[1]}`);
-    t.lov.setAttribute("preserveAspectRatio", view.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet");
+    // What the detectors found on the last checked snapshot, over the live camera
     const [sw, sh] = snap.size;
-    t.ov.setAttribute("viewBox", `0 0 ${sw} ${sh}`);
-    t.ov.setAttribute("preserveAspectRatio", view.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet");
-    t.ov.innerHTML = fail.map((b) =>
+    t.lov.setAttribute("viewBox", `0 0 ${sw} ${sh}`);
+    t.lov.setAttribute("preserveAspectRatio", view.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet");
+    t.lov.innerHTML = fail.map((b) =>
       `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#ffd23f" stroke-width="2" vector-effect="non-scaling-stroke"><title>Failure ${Math.round(b.conf * 100)}%</title></rect>`).concat(
       cells.map(([x, y, bw, bh]) =>
       `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="rgba(255,80,80,.14)" stroke="#ff5050" stroke-dasharray="5 4" stroke-width="2" vector-effect="non-scaling-stroke"><title>Changed since a few minutes ago</title></rect>`)).concat(
@@ -1728,20 +1735,13 @@ function renderWatch(t) {
         return `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#36cfc9" stroke-width="2" vector-effect="non-scaling-stroke"><title>${esc(name)} ${Math.round(b.conf * 100)}% (problem-type detector, trial)</title></rect>`
           + `<text x="${b.x + 3}" y="${Math.max(fs, b.y - 4)}" font-size="${fs}" fill="#36cfc9" stroke="#000" stroke-width="${fs / 5}" paint-order="stroke" font-family="system-ui, sans-serif" font-weight="600">${esc(name)} ${Math.round(b.conf * 100)}%</text>`;
       })).join("");
-    t.lov.innerHTML = t.ov.innerHTML;   // the same boxes over the live camera
   } else {
-    t.ov.innerHTML = "";
     t.lov.innerHTML = "";
-    t.aiimg.hidden = true; t.aiage.hidden = true; t.aimsg.hidden = false;
-    delete t.aiimg.dataset.src;
-    t.aimsg.textContent = !w ? "Not watched by the server"
-      : w.detect === "off" ? "Detection is off for this printer"
-      : watching ? "Waiting for the first check…" : "Watching starts when a print starts";
   }
 
   let text;
-  if (!w) text = "not watched";
-  else if (!watching) text = w.detect === "off" ? "off" : "idle";
+  if (!w) text = "Not watched by the server";
+  else if (!watching) text = w.detect === "off" ? "Detection is off for this printer" : "Watching starts when a print starts";
   else if (w.ignored) text = "Not a failure (this print)";
   else if (moved) text = "Part moved or came loose";
   else if (w.faults?.alerted?.length) text = "Possible " + w.faults.alerted.map((k) => (FAULT_NAMES[k] || k).toLowerCase()).join(", ");
@@ -1751,7 +1751,8 @@ function renderWatch(t) {
   if (watching && !moved && w.motion?.state === "candidate") text += " · part changed?";
   t.aistate.textContent = text;
   t.aistate.className = "aistate " + level;
-  t.aistate.title = "Yellow: spaghetti (Obico). Red dashed: part moved. Cyan: problem type (trial). Opens Print Watch.";
+  t.aistate.title = (snap ? `Last check ${watchAgo(snap.t)} ago. ` : "")
+    + "Boxes on the camera: yellow spaghetti (Obico), red dashed part moved, cyan problem type (trial). Opens Print Watch.";
 }
 
 // Problem types from the server's own detector (same keys as its training labels)
@@ -1839,7 +1840,7 @@ function renderRow(t) {
     const url = (f) => `api/printers/${encodeURIComponent(w.name)}/flagged/${encodeURIComponent(f)}`;
     const html = `<details${t.wOpen ? " open" : ""}><summary>Activity${flagged.length ? ` · ${flagged.length} flagged frame${flagged.length > 1 ? "s" : ""}` : ""}</summary>
       <div class="wbody"><ul class="events">${events.slice(0, 8).map((e) => `<li>${new Date(e.t * 1000).toLocaleTimeString()} <b>${esc(e.text)}</b></li>`).join("")}</ul>
-      ${flagged.length ? `<div class="thumbs">${flagged.map((f) => `<span class="tw"><a href="${url(f)}" target="_blank" rel="noopener" title="${esc(f)}"><img loading="lazy" src="${url(f)}" alt=""></a><a class="lb" href="label/?flagged=${encodeURIComponent(w.name + "/" + f)}" target="_blank" rel="noopener" title="Label this frame for training data (for example mark a false alarm)">✎</a></span>`).join("")}</div>` : ""}</div></details>`;
+      ${flagged.length ? `<div class="thumbs">${flagged.map((f) => `<a href="label/?flagged=${encodeURIComponent(w.name + "/" + f)}" target="_blank" rel="noopener" title="${esc(f)}: open it to look closer, box problems or mark it a false alarm"><img loading="lazy" src="${url(f)}" alt=""></a>`).join("")}</div>` : ""}</div></details>`;
     // Only rewrite when it changed, so an open list keeps its scroll position
     if (t.aiact.dataset.html !== html) { t.aiact.innerHTML = html; t.aiact.dataset.html = html; }
     t.aiact.hidden = false;
