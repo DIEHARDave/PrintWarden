@@ -101,7 +101,7 @@
   .tile > .rw[data-row="card"] { order: var(--o-card, 3); }
   .tile > .rw[data-row="spools"] { order: var(--o-spools, 4); }
   .tile > .rw[data-row="ai"] { order: var(--o-ai, 5); }
-  .rw > .rbody { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+  .rw > .rbody { min-width: 0; display: flex; flex-direction: column; justify-content: flex-start; }
   .rbar {
     display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 3px;
     border-top: 1px solid var(--border); border-right: 1px solid var(--border);
@@ -239,11 +239,14 @@
   .aimon .spark { width: 100%; height: 30px; display: block; }
   .aimon .wact { display: flex; gap: 6px; flex-wrap: wrap; }
   .aimon details summary { cursor: pointer; color: var(--muted); }
-  .aimon .wbody { max-height: calc(var(--tile-w, 360px) * 0.5); overflow: auto; }
+  .aimon .wbody { max-height: calc(var(--tile-w, 360px) * 0.9); overflow: auto; }
   .aimon .events { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 1px; color: var(--muted); }
   .aimon .events b { color: var(--text); font-weight: 500; }
-  .aimon .thumbs { display: flex; gap: 5px; overflow-x: auto; margin-top: 5px; }
-  .aimon .thumbs img { height: 48px; border-radius: 3px; display: block; }
+  /* Newest flagged frames of this print, three across in up to two rows */
+  .aimon .thumbs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-top: 5px; }
+  .aimon .thumbs img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 3px; display: block; background: #000; }
+  .aimon .allframes { display: inline-block; margin-top: 5px; font-size: 11.5px; color: var(--accent); text-decoration: none; }
+  .aimon .allframes:hover { text-decoration: underline; }
   .aimon .thumbs a:hover img { outline: 2px solid var(--accent); }
   .aimon .tw { position: relative; flex: none; }
   .aimon .tw .lb {
@@ -986,6 +989,9 @@ function fitWidth() {
   return Math.max(120, Math.floor(best));
 }
 function fitToWindow() {
+  // Width lets the page scroll down: keep the scrollbar's room reserved, so a
+  // card growing (Activity opened) can't push the last tile onto a new line
+  document.documentElement.style.overflowY = view.fitMode === "width" ? "scroll" : "";
   if (!fitting()) return;
   // Twice: text in the card bar can wrap differently at the new width,
   // which changes the fixed part
@@ -997,8 +1003,9 @@ function fitToWindow() {
   // Rounding safety: shrink a little until nothing scrolls (sideways for
   // Width, at all for Height)
   let w = view.size;
+  // Width: shrink until no tile wraps onto a second line
   const over = () => view.fitMode === "width"
-    ? document.documentElement.scrollWidth > window.innerWidth + 1
+    ? new Set(tiles.filter((t) => t.p.show !== false).map((t) => t.el.offsetTop)).size > 1
     : document.documentElement.scrollHeight > window.innerHeight + 1;
   while (w > 120 && over()) {
     w -= 4;
@@ -1840,7 +1847,8 @@ function renderRow(t) {
     const url = (f) => `api/printers/${encodeURIComponent(w.name)}/flagged/${encodeURIComponent(f)}`;
     const html = `<details${t.wOpen ? " open" : ""}><summary>Activity${flagged.length ? ` · ${flagged.length} flagged frame${flagged.length > 1 ? "s" : ""}` : ""}</summary>
       <div class="wbody"><ul class="events">${events.slice(0, 8).map((e) => `<li>${new Date(e.t * 1000).toLocaleTimeString()} <b>${esc(e.text)}</b></li>`).join("")}</ul>
-      ${flagged.length ? `<div class="thumbs">${flagged.map((f) => `<a href="label/?flagged=${encodeURIComponent(w.name + "/" + f)}" target="_blank" rel="noopener" title="${esc(f)}: open it to look closer, box problems or mark it a false alarm"><img loading="lazy" src="${url(f)}" alt=""></a>`).join("")}</div>` : ""}</div></details>`;
+      ${flagged.length ? `<div class="thumbs">${flagged.slice(0, 6).map((f) => `<a href="label/?flagged=${encodeURIComponent(w.name + "/" + f)}" target="_blank" rel="noopener" title="${esc(f)}: open it to look closer, box problems or mark it a false alarm"><img loading="lazy" src="${url(f)}" alt=""></a>`).join("")}</div>` : ""}
+      ${flagged.length > 6 ? `<a class="allframes" href="label/?frames=${encodeURIComponent(w.name)}" target="_blank" rel="noopener">All ${flagged.length} frames from this print ›</a>` : ""}</div></details>`;
     // Only rewrite when it changed, so an open list keeps its scroll position
     if (t.aiact.dataset.html !== html) { t.aiact.innerHTML = html; t.aiact.dataset.html = html; }
     t.aiact.hidden = false;

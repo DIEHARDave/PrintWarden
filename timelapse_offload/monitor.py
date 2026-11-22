@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime
 from collections import deque
 from pathlib import Path
 
@@ -133,6 +134,7 @@ class Detector:
         self.fault_streak: dict[str, int] = {}
         self.fault_alerted: set[str] = set()
         self.fault_seconds = 0.0
+        self.print_started = 0.0    # when the current (or last) print started; 0 = unknown
         self.wake = asyncio.Event()
 
     # --- printer access ---
@@ -157,7 +159,7 @@ class Detector:
         return Snapshot(jpeg=data, taken=time.time())
 
     async def poll_state(self) -> None:
-        stats = await self.mr.get("/printer/objects/query", print_stats="state,filename",
+        stats = await self.mr.get("/printer/objects/query", print_stats="state,filename,total_duration",
                                   virtual_sdcard="progress", toolhead="position")
         st = stats["status"]
         pos = st.get("toolhead", {}).get("position") or []
@@ -165,6 +167,7 @@ class Detector:
         new = st.get("print_stats", {}).get("state", "")
         self.filename = st.get("print_stats", {}).get("filename", "") or self.filename
         self.progress = float(st.get("virtual_sdcard", {}).get("progress") or 0)
+        self.print_duration = float(st.get("print_stats", {}).get("total_duration") or 0)
         old, self.state = self.state, new
         if old == new:
             return
@@ -183,6 +186,9 @@ class Detector:
                 self.event("resumed", "Resumed; watching again after a short grace period")
 
     def new_print(self) -> None:
+        # Klipper's total_duration counts from the real start, also when this app
+        # (re)started in the middle of a print
+        self.print_started = time.time() - getattr(self, "print_duration", 0.0)
         self.pred.reset_print()
         self.history.clear()
         self.ignored = self.warned = self.failed = self.paused_by_us = self.moved = False
@@ -365,6 +371,7 @@ class Detector:
             "online": self.online, "error": self.error or self.model.error,
             "state": self.state, "filename": self.filename, "progress": self.progress,
             "score": round(score, 3), "level": level, "score_level": score_level,
+            "print_started": self.print_started,
             "ignored": self.ignored,
             "frames": self.pred.current_frame_num,
             "safe_frames": detect.INIT_SAFE_FRAME_NUM,
@@ -385,6 +392,12 @@ class Detector:
                 "ms": round(self.fault_seconds * 1000), "error": self.faults.error},
         }
 
-    def flagged(self) -> list[Path]:
+    def flagged(self, this_print: bool = False) -> list[Path]:
+        """Flagged frames, newest first; with this_print, only those since the current
+        (or last) print started, when that is known."""
         folder = self.cfg.detection.flagged_dir / self.printer.name
-        return sorted(folder.glob("*.jpg"), reverse=True) if folder.exists() else []
+        files = sorted(folder.glob("*.jpg"), reverse=True) if folder.exists() else []
+        if this_print and self.print_started:
+            since = datetime.fromtimestamp(self.print_started).strftime("%Y%m%d_%H%M%S")
+            files = [f for f in files if f.name[:15] >= since]
+        return files

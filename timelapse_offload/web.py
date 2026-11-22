@@ -72,7 +72,7 @@ async def status(request: web.Request) -> web.Response:
         if det is None:
             continue
         s = det.status()
-        s["flagged"] = [f.name for f in det.flagged()[:12]]
+        s["flagged"] = [f.name for f in det.flagged(this_print=True)]
         printers.append(s)
     return web.json_response({"printers": printers, "interval": sup.cfg.detection.interval,
                               "model_ready": sup.model._session is not None,

@@ -290,6 +290,29 @@ async function showList() {
   $("loading").hidden = true; $("list").hidden = false;
 }
 
+// ---------- one print's flagged frames ----------
+const KINDS = { warning: "Possible failure", failure: "Likely failure", paused: "Paused", moved: "Part moved",
+  before: "Before the move", fault: "Problem type (trial)" };
+async function showFrames(printer) {
+  const st = await api("api/status");
+  const p = st.printers.find((x) => x.name === printer);
+  if (!p) throw new Error(`no printer ${printer}`);
+  $("title").textContent = `${printer}: flagged frames`;
+  $("meta").textContent = [p.print_started ? `print started ${when(p.print_started)}` : "", p.filename,
+    `${p.flagged.length} frame${p.flagged.length === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
+  $("listLink").hidden = false;
+  $("listHint").textContent = "Every frame an alert or pause saved during this print, newest first. Click one to look closer, box problems or mark it a false alarm; it is then added to the training frames.";
+  $("gallery").innerHTML = p.flagged.map((f) => {
+    const m = f.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_([a-z]+)\.jpg$/);
+    const t = m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]).toLocaleString() : f;
+    const kind = m ? (KINDS[m[7]] || m[7]) : "";
+    const src = `api/printers/${encodeURIComponent(printer)}/flagged/${encodeURIComponent(f)}`;
+    return `<a class="item" href="label/?flagged=${encodeURIComponent(printer + "/" + f)}"><img loading="lazy" src="${src}" alt="">
+      <div><span class="chip ${m && /fail|paused|moved/.test(m[7]) ? "problem" : "none"}">${esc(kind)}</span><span class="chip">${esc(t)}</span></div></a>`;
+  }).join("") || '<p class="hint">No flagged frames for this print.</p>';
+  $("loading").hidden = true; $("list").hidden = false;
+}
+
 // ---------- start ----------
 (async () => {
   try {
@@ -302,6 +325,8 @@ async function showList() {
     } else if (q.get("flagged")) {
       const [printer, file] = q.get("flagged").split("/");
       openFrame(await api("api/training/from-flagged", { method: "POST", body: JSON.stringify({ printer, file }) }));
+    } else if (q.get("frames")) {
+      await showFrames(q.get("frames"));
     } else if (q.get("id")) {
       openFrame(await api(`api/training/${encodeURIComponent(q.get("id"))}`));
     } else {
