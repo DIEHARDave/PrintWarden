@@ -70,7 +70,7 @@ async def status(request: web.Request) -> web.Response:
         if det is None:
             continue
         s = det.status()
-        # Frames already reviewed on the label page are done with
+        # Frames already reviewed on the AI Training page are done with
         done = training.reviewed_flagged(sup)
         frames = [f.name for f in det.flagged(this_print=True)]
         s["flagged"] = [f for f in frames if (p.name, f) not in done]

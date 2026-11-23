@@ -26,7 +26,7 @@ from .moonraker import MoonrakerError
 
 log = logging.getLogger(__name__)
 
-# Problem types offered on the label page, in this order (YOLO class ids follow it)
+# Problem types offered on the AI Training page, in this order (YOLO class ids follow it)
 LABELS = {
     "spaghetti": "Spaghetti / loose strands",
     "detached": "Part came loose or moved",
@@ -236,7 +236,7 @@ _reviewed: tuple = (None, set())
 
 
 def reviewed_flagged(sup) -> set:
-    """(printer, file) of every flagged frame that has been labelled on the label page
+    """(printer, file) of every flagged frame that has been labelled on the AI Training page
     (shows a problem / looks fine / not sure). Cached until the training folder changes."""
     global _reviewed
     d = folder(sup)

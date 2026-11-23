@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Label Frame</title>
+<title>AI Training</title>
 <base href="../">
 <style>
 :root {
@@ -79,7 +79,7 @@ textarea { width: 100%; min-height: 60px; font: inherit; font-size: 13px; color:
 </head>
 <body>
 <header>
-  <h1 id="title">Training frames</h1>
+  <h1 id="title">AI Training</h1>
   <span class="meta" id="meta"></span>
   <span class="spacer"></span>
   <a id="listLink" href="label/" hidden>All frames</a>
@@ -326,7 +326,7 @@ $("refUse").addEventListener("click", () => {
 // ---------- list ----------
 async function showList() {
   const d = await api("api/training");
-  $("title").textContent = "Training frames";
+  $("title").textContent = "AI Training";
   const done = d.items.filter((i) => i.verdict).length;
   $("meta").textContent = `${d.items.length} frame${d.items.length === 1 ? "" : "s"}, ${done} labelled`;
   $("listHint").textContent = d.items.length

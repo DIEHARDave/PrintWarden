@@ -11,7 +11,7 @@ It brings three earlier projects together: Printer Monitor (the multi-printer pa
 - **Watches every printer on one page** at `http://<docker host>:8095/`: live camera, remote screen, a Mainsail-style card with progress, ETA and temperatures, and the spool in each lane (from Moonraker `lane_data`, AFC and Spoolman).
 - **Renders timelapses off the printer.** When a print finishes, it downloads the moonraker-timelapse frames, renders them with ffmpeg and saves the video to a network share. Printers that render on-device (Snapmaker U1) have their finished videos copied instead.
 - **Looks for failures while printing**: Obico's spaghetti model, a moved-or-loose-part check, and our own problem-type detector (trial). Each can alert (Discord, printer console) or alert and pause the print.
-- **Collects training data.** Capture frames from any camera, label problems on the label page, and export a YOLO dataset to train the next detector.
+- **Collects training data.** Capture frames from any camera, label problems on the AI Training page, and export a YOLO dataset to train the next detector.
 
 ## Install
 
@@ -76,8 +76,8 @@ Tested with Zmod (Flashforge AD5X / Creator 5), Kiln OS, Snapmaker U1, the FLSUN
 
 - **A column per printer** with Camera, Screen, Card, Spools and AI Monitor rows. The slim bar on the left of each row has a grip (drag it onto another row to move it) and a fold arrow (fold the row to a thin strip; it keeps running). The toolbar's **Rows** menu switches rows on or off; rows switched off stop their streams and polling. Every row is as tall as its tallest copy, so rows and columns stay level. Click a tile to enlarge it.
 - **Fit to window**: **Width** sizes the tiles to fill the window's width in one line and lets the page scroll down; **Height** fits everything in the window without scrolling.
-- **Live video**: the browser plays each printer's MJPEG stream straight from the printer (camera-streamer's WebRTC entry is swapped for its `stream.mjpg`). The detectors' boxes from the last checked snapshot are drawn over it, in the label page's problem-type colors: red spaghetti (Obico), orange dashed moved part, and each named problem type in its own color. The tile border turns orange or red on an alert. Each open page pulls one stream per printer, so keep it to a few viewers on weak printer boards.
-- **AI Monitor card**: a timelapse chip and two detection chips, **spaghetti** and **moved**; click one to step it through off, alert and alert + pause (saved on the server at once). Below them: the failure score and its history, the part-position check, the problem types seen, **Not a failure** (silences alerts for the rest of that print; **Undo** turns them back on), and this print's newest flagged frames with what was detected drawn on them. The state line and **All N frames** open the print's flagged frames on the label page.
+- **Live video**: the browser plays each printer's MJPEG stream straight from the printer (camera-streamer's WebRTC entry is swapped for its `stream.mjpg`). The detectors' boxes from the last checked snapshot are drawn over it, in the AI Training page's problem-type colors: red spaghetti (Obico), orange dashed moved part, and each named problem type in its own color. The tile border turns orange or red on an alert. Each open page pulls one stream per printer, so keep it to a few viewers on weak printer boards.
+- **AI Monitor card**: a timelapse chip and two detection chips, **spaghetti** and **moved**; click one to step it through off, alert and alert + pause (saved on the server at once). Below them: the failure score and its history, the part-position check, the problem types seen, **Not a failure** (silences alerts for the rest of that print; **Undo** turns them back on), and this print's newest flagged frames with what was detected drawn on them. The state line and **All N frames** open the print's flagged frames on the AI Training page.
 - **Spools row**: one entry per physical lane, built from Moonraker's `lane_data` and AFC lane state. Names, colors and weights come from Spoolman; empty lanes show as Empty. **Sync** (optional) sets each loaded spool's Spoolman location to `<printer> <lane>` and clears out-of-date ones; a spool claimed by two printers is flagged and skipped.
 - **Printers…**: each printer's host, camera and screen (picked from its Moonraker webcam list, or **Custom…**), the Spoolman URL, and under each row the server settings: **Watch** (the server handles this printer), timelapse handling, both detectors, sensitivities, and under ⋯ the server name, port, API key, frame download and copy-mode options. The section below holds Find printers and the settings for all printers (check interval, threads, Discord webhook, console message, test alert). Save writes the server side first, and only when something changed.
 
@@ -142,15 +142,15 @@ Snapshots are fetched from the printer's web port (the `snapshot_url` in its web
 
 ### Problem types (trial)
 
-A second model, trained by us (`tools/train_detector.py` on public CC BY 4.0 Roboflow sets plus frames labelled here), boxes spaghetti, stringing, under- and over-extrusion, warping, blobs, cracks and loose parts on the same snapshots. It is downloaded (about 11 MB, checked against its SHA-256) from this project's [v0.3.0 release](https://github.com/DIEHARDave/PrintWarden/releases/tag/v0.3.0) into `<data>/models/faults.onnx` the first time a printer has detection on. A `faults.onnx` you train yourself and put there is used as is and never replaced (a new file is picked up at the next check). `detection.problem_types: false` in config.yaml turns it off. It is in trial: it only alerts, never pauses, once a type stays above 50% for 3 checks in a row, once per type per print, and "Not a failure" silences it like the rest. The page draws its boxes in that type's color from the label page, with the type and confidence, and the detection row lists what it sees now. About 0.2 s per check on a 2-vCPU host.
+A second model, trained by us (`tools/train_detector.py` on public CC BY 4.0 Roboflow sets plus frames labelled here), boxes spaghetti, stringing, under- and over-extrusion, warping, blobs, cracks and loose parts on the same snapshots. It is downloaded (about 11 MB, checked against its SHA-256) from this project's [v0.3.0 release](https://github.com/DIEHARDave/PrintWarden/releases/tag/v0.3.0) into `<data>/models/faults.onnx` the first time a printer has detection on. A `faults.onnx` you train yourself and put there is used as is and never replaced (a new file is picked up at the next check). `detection.problem_types: false` in config.yaml turns it off. It is in trial: it only alerts, never pauses, once a type stays above 50% for 3 checks in a row, once per type per print, and "Not a failure" silences it like the rest. The page draws its boxes in that type's color from the AI Training page, with the type and confidence, and the detection row lists what it sees now. About 0.2 s per check on a 2-vCPU host.
 
-`tools/check_false_alarms.py` runs a model over our own timelapse videos and reports how often it would have flagged a frame; anything it finds on a good print is a false alarm, and those frames belong on the label page as "looks fine" before the next training run.
+`tools/check_false_alarms.py` runs a model over our own timelapse videos and reports how often it would have flagged a frame; anything it finds on a good print is a false alarm, and those frames belong on the AI Training page as "looks fine" before the next training run.
 
 ## Training data
 
 ![Label frame page with dashed detector boxes on the camera picture and the problem type list, boxes and verdict on the right](docs/label-frame.png)
 
-To build our own failure examples, the camera button at the bottom right of each watched printer's camera on the page takes a fresh frame from that printer and opens it on the label page (`/label/`) in a new tab. Drag boxes round problems and pick their type (spaghetti, part came loose or moved, layer shift, warping, stringing, under-extrusion, over-extrusion, blob, cracks, other; keys 1–9 and 0), say whether the frame shows a problem, looks fine or you are not sure, add a note and save. Clicking a flagged frame in the AI Monitor card copies that alert frame to the label page, which is how false alarms get recorded.
+To build our own failure examples, the camera button at the bottom right of each watched printer's camera on the page takes a fresh frame from that printer and opens it on the AI Training page (`/label/`) in a new tab. Drag boxes round problems and pick their type (spaghetti, part came loose or moved, layer shift, warping, stringing, under-extrusion, over-extrusion, blob, cracks, other; keys 1–9 and 0), say whether the frame shows a problem, looks fine or you are not sure, add a note and save. Clicking a flagged frame in the AI Monitor card copies that alert frame to the AI Training page, which is how false alarms get recorded.
 
 Frames are kept in `/data/training/` (`<id>.jpg` + `<id>.json` with printer, time, print file and progress, verdict, boxes in pixels and the note). `/label/` lists them, and `/label/?frames=<printer>` shows every flagged frame of a printer's current (or last) print, whose start comes from Klipper's `total_duration`; **Export** (`/api/training/export.zip`) downloads the labelled ones as a YOLO dataset (`images/`, `labels/`, `classes.txt`; a "fine" frame has an empty label file) plus the JSON records.
 
@@ -176,7 +176,7 @@ PrintWarden replaces the [printer-monitor](https://github.com/DIEHARDave/printer
 
 ### Training data
 
-The full dataset the shipped model (v4) was trained on is on the same release: [printwarden-training-v4.zip](https://github.com/DIEHARDave/PrintWarden/releases/download/v0.3.0/printwarden-training-v4.zip) (about 670 MB, YOLO format: `train/`, `valid/`, `test/`, `data.yaml` with the 10 problem types, `ATTRIBUTION.txt`). Unzip it, add your own frames exported from the label page, and train with `tools/train_detector.py`.
+The full dataset the shipped model (v4) was trained on is on the same release: [printwarden-training-v4.zip](https://github.com/DIEHARDave/PrintWarden/releases/download/v0.3.0/printwarden-training-v4.zip) (about 670 MB, YOLO format: `train/`, `valid/`, `test/`, `data.yaml` with the 10 problem types, `ATTRIBUTION.txt`). Unzip it, add your own frames exported from the AI Training page, and train with `tools/train_detector.py`.
 
 It combines these CC BY 4.0 sets from Roboflow Universe, relabelled to our problem types:
 
@@ -184,7 +184,7 @@ It combines these CC BY 4.0 sets from Roboflow Universe, relabelled to our probl
 - [FDM](https://universe.roboflow.com/3d-printer-failure/fdm-w6znp-qnbzd/dataset/2) by 3d-printer-failure
 - [3D printing failure](https://universe.roboflow.com/3d-printing-failure/3d-printing-failure/dataset/1) by 3d-printing-failure
 
-plus frames from our own printers labelled on the label page, released under CC BY 4.0 as well.
+plus frames from our own printers labelled on the AI Training page, released under CC BY 4.0 as well.
 
 ## License
 

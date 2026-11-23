@@ -563,7 +563,7 @@
     </select>
   </label>
   <span class="spacer"></span>
-  <a class="wlink" id="watchLink" href="label/" target="_blank" rel="noopener" hidden title="Training frames and labels">Labels</a>
+  <a class="wlink" id="watchLink" href="label/" target="_blank" rel="noopener" hidden title="AI Training: label frames for the next detector">AI Training</a>
   <button id="settingsBtn" type="button">Printers…</button>
 </div>
 
@@ -1946,11 +1946,11 @@ function renderWatch(t) {
   t.aistate.className = "aistate " + level;
   t.aistate.href = w ? "label/?frames=" + encodeURIComponent(w.name) : "label/";
   t.aistate.title = (snap ? `Last check ${watchAgo(snap.t)} ago. ` : "")
-    + "Boxes on the camera: colored by problem type as on the label page: red spaghetti (Obico, unnamed), orange dashed part moved, named boxes from the problem-type detector (trial). Opens this print's flagged frames.";
+    + "Boxes on the camera: colored by problem type as on the AI Training page: red spaghetti (Obico, unnamed), orange dashed part moved, named boxes from the problem-type detector (trial). Opens this print's flagged frames.";
 }
 
 // Problem types from the server's own detector (same keys as its training labels)
-// Box colors per problem type, the same as the label page's Problem type list
+// Box colors per problem type, the same as the AI Training page's Problem type list
 const TYPE_COLORS = { spaghetti: "#ff4d4f", detached: "#ffa940", layer_shift: "#fadb14", warping: "#73d13d",
   stringing: "#36cfc9", under_extrusion: "#4096ff", over_extrusion: "#9254de", blob: "#f759ab", cracks: "#bae637", other: "#d4b106" };
 const typeColor = (k) => TYPE_COLORS[k] || TYPE_COLORS.other;
