@@ -1207,7 +1207,7 @@ function buildGrid() {
     t.wchips.addEventListener("click", (e) => {
       if (e.target.closest("button.wchip")) cycleDetect(t, e.target.closest("button.wchip"));
     });
-    t.aibody.addEventListener("click", (e) => { if (e.target.closest(".wignore")) notFailure(t); else if (e.target.closest(".wunignore")) notFailure(t, true); });
+    t.aibody.addEventListener("click", (e) => { if (e.target.closest(".wignore")) notFailure(t); else if (e.target.closest(".wunignore")) notFailure(t, true); else if (e.target.closest(".wresume")) resumePrint(t, e.target.closest(".wresume")); });
 
     tiles.push(t);
   });
@@ -2001,6 +2001,20 @@ async function notFailure(t, undo = false) {
   fetchWatch();
 }
 
+// Straight to the printer's Moonraker, like the console row
+async function resumePrint(t, btn) {
+  if (!confirm(`Resume the print on ${displayName(t)}?`)) return;
+  btn.disabled = true;
+  btn.textContent = "Resuming…";
+  const r = await fetch(moonrakerUrl(t.p, "/printer/print/resume"), { method: "POST" }).catch(() => null);
+  if (!r || !r.ok) {
+    btn.disabled = false;
+    btn.textContent = "Resume";
+    alert(`Resume failed${r ? ` (HTTP ${r.status})` : ""}`);
+  }
+  setTimeout(() => { fetchWatch(); pollConsole(t); }, 800);
+}
+
 function watchSpark(hist) {
   if (!hist || hist.length < 2) return "";
   const w = 300, h = 30, t0 = hist[0][0], t1 = hist[hist.length - 1][0] || t0 + 1;
@@ -2036,8 +2050,10 @@ function renderRow(t) {
         .map(([k, c]) => `${esc(FAULT_NAMES[k] || k)} ${Math.round(c * 100)}%${w.faults.streak?.[k] > 1 ? ` ×${w.faults.streak[k]}` : ""}`);
       parts.push(`<div class="wline" title="Our own problem-type detector (trial): alerts when a type stays above ${Math.round((w.faults.alert_conf || 0.5) * 100)}% for ${w.faults.alert_streak || 3} checks in a row; it never pauses"><span class="lbl">Problem types</span><span class="wmuted" style="grid-column: span 2">${list.length ? list.join(" · ") : "none seen"}</span></div>`);
     }
-    if (w.ignored) parts.push('<div class="wact"><span class="wmuted">Marked as not a failure for this print.</span><button type="button" class="wunignore" title="Turn alerts back on for this print">Undo</button></div>');
-    else parts.push('<div class="wact"><button type="button" class="wignore" title="Stop alerts for the rest of this print">Not a failure</button></div>');
+    const resume = w.state === "paused"
+      ? '<button type="button" class="wresume" title="Resume the paused print (Moonraker /printer/print/resume)">Resume</button>' : "";
+    if (w.ignored) parts.push(`<div class="wact"><span class="wmuted">Marked as not a failure for this print.</span><button type="button" class="wunignore" title="Turn alerts back on for this print">Undo</button>${resume}</div>`);
+    else parts.push(`<div class="wact"><button type="button" class="wignore" title="Stop alerts for the rest of this print">Not a failure</button>${resume}</div>`);
   }
   if (w.error) parts.push(`<div class="werr">${esc(w.error)}</div>`);
   t.aibody.hidden = !parts.length;
