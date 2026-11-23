@@ -101,6 +101,7 @@
   .tile > .rw[data-row="card"] { order: var(--o-card, 3); }
   .tile > .rw[data-row="spools"] { order: var(--o-spools, 4); }
   .tile > .rw[data-row="ai"] { order: var(--o-ai, 5); }
+  .tile > .rw[data-row="console"] { order: var(--o-console, 6); }
   .rw > .rbody { min-width: 0; display: flex; flex-direction: column; justify-content: flex-start; }
   .rbar {
     display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 3px;
@@ -127,7 +128,7 @@
   .rw.collapsed > .rcol { display: block; }
   /* Rows switched off in the Rows menu */
   .no-cam .rw[data-row="cam"], .no-screens .rw[data-row="screen"], .no-cards .rw[data-row="card"],
-  .no-spools .rw[data-row="spools"], .no-ai .rw[data-row="ai"] { display: none; }
+  .no-spools .rw[data-row="spools"], .no-ai .rw[data-row="ai"], .no-console .rw[data-row="console"] { display: none; }
   /* Rows menu in the toolbar */
   .rowsmenu { position: relative; }
   .rowsmenu > summary { list-style: none; cursor: pointer; border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; color: var(--text); }
@@ -392,6 +393,27 @@
   .spools .sfoot .sstate.warn { color: var(--warn); }
   .spools .sfoot button { padding: 1px 8px; font-size: 11px; }
   .spools .sfoot button:disabled { opacity: .45; cursor: default; border-color: var(--border); }
+
+  /* Console row: Moonraker's G-code store (what Mainsail's console shows)
+     plus a line to send G-code to the printer */
+  .console { border-top: 1px solid var(--border); display: flex; flex-direction: column; }
+  .console .clog {
+    height: clamp(90px, calc(var(--tile-w, 360px) * 0.45), 320px);
+    overflow-y: auto; padding: 4px 6px;
+    font: 11px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .console .clog > div { display: flex; gap: 6px; }
+  .console .clog .ct { color: var(--muted); flex: none; }
+  .console .clog .cmd { color: var(--accent); }
+  .console .clog .err { color: var(--err); }
+  .console .clog .cmsg { color: var(--muted); text-align: center; padding: 6px 0; display: block; }
+  .console form { display: flex; gap: 4px; padding: 4px 6px 6px; border-top: 1px solid var(--border); }
+  .console input {
+    flex: 1; min-width: 0; padding: 2px 6px; font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px;
+  }
+  .console button { padding: 1px 8px; font-size: 11px; }
 
   .zoom .zframe {
     position: relative;
@@ -686,7 +708,7 @@ const view = Object.assign(
 // view.off the rows switched off, view.collapsed the rows folded to a strip.
 // Older saved views (a fixed order plus on/off boxes, or a list of rows
 // shown) are carried over once.
-const ROW_NAMES = { cam: "Camera", screen: "Screen", card: "Card", spools: "Spools", ai: "AI Monitor" };
+const ROW_NAMES = { cam: "Camera", screen: "Screen", card: "Card", spools: "Spools", ai: "AI Monitor", console: "Console" };
 const ALL_ROWS = Object.keys(ROW_NAMES);
 if (!Array.isArray(view.order)) {
   let shown = view.rows;
@@ -853,6 +875,7 @@ function applyRows() {
   body.toggle("no-cards", !showRow("card"));
   body.toggle("no-spools", !showRow("spools"));
   body.toggle("no-ai", !showRow("ai"));
+  body.toggle("no-console", !showRow("console"));
   document.querySelectorAll(".tile > .rw").forEach((w) => w.classList.toggle("collapsed", view.collapsed.includes(w.dataset.row)));
   view.screens = showRow("screen");   // read by the screen, spools and fit code
   view.cards = showRow("card");
@@ -860,7 +883,8 @@ function applyRows() {
   if (was.cam !== showRow("cam")) tiles.forEach(showRow("cam") ? startStream : stopStream);
   if (was.screen !== showRow("screen")) tiles.forEach(showRow("screen") ? startScreen : stopScreen);
   if (!was.spools && showRow("spools")) refreshSpools();
-  rowsWas = { cam: showRow("cam"), screen: showRow("screen"), spools: showRow("spools") };
+  if (!was.console && showRow("console")) tiles.forEach((t) => pollConsole(t));
+  rowsWas = { cam: showRow("cam"), screen: showRow("screen"), spools: showRow("spools"), console: showRow("console") };
   renderRowsMenu();
   equalizeRows();
   document.querySelectorAll(".rcol[data-texts]").forEach(fitStrip);
@@ -981,6 +1005,7 @@ function fitWidth() {
   if (rowOpen("screen")) k += 3 / 5;  // screen row
   if (rowOpen("card")) k += 2 / 3;    // card image
   if (rowOpen("ai")) k += b / a;      // AI Monitor frame
+  if (rowOpen("console")) k += 0.45;  // console log
   // The tallest tile: the spools row differs between printers
   const fixed = Math.max(...vis.map((t) => t.el.offsetHeight - t.el.offsetWidth * k));
 
@@ -1087,6 +1112,12 @@ function buildGrid() {
         <div class="aibody" hidden></div>
         <div class="aiact" hidden></div>
       </div>
+      </div></div>
+      <div class="rw" data-row="console"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ Console</div><div class="rbody">
+      <div class="console">
+        <div class="clog"><span class="cmsg">Loading console…</span></div>
+        <form><input type="text" placeholder="Send G-code…" spellcheck="false" autocomplete="off"><button type="submit">Send</button></form>
+      </div>
       </div></div>`;
     grid.appendChild(el);
     const t = {
@@ -1122,6 +1153,11 @@ function buildGrid() {
       activeSpool: null, // Moonraker's active Spoolman spool
       activeTool: null,  // 0-based head in use on multi-head printers
       syncMsg: "",
+      clog: el.querySelector(".console .clog"),
+      cinput: el.querySelector(".console input"),
+      consoleStrip: el.querySelector('.rw[data-row="console"] .rcol'),
+      consoleKey: null,  // newest line shown, to skip redraws
+      cHistory: [], cHistIdx: 0,
     };
     el.querySelector(".shield")?.addEventListener("click", () => openScreenZoom(t));
     if (t.frame) {
@@ -1129,6 +1165,8 @@ function buildGrid() {
       screenNative(t).then((n) => { t.screenSize = n; fitFrame(t.frame.parentElement, t.frame, n); });
     }
     t.ssync.addEventListener("click", () => syncSpools(t));
+    el.querySelector(".console form").addEventListener("submit", (e) => { e.preventDefault(); sendGcode(t); });
+    t.cinput.addEventListener("keydown", (e) => consoleHistory(t, e));
     t.logo.addEventListener("load", () => { applyLogoBacking(t); t.logo.hidden = false; });
     t.logo.addEventListener("error", () => {
       // The logo is loaded with CORS (its pixels pick the backing). A copy the
@@ -1407,7 +1445,69 @@ function updateCardImage(t) {
   const url = t.thumb?.url || t.cardBg;
   t.cimg.style.backgroundImage = url ? `url("${url}")` : "";
 }
-function pollAll() { if (!document.hidden) tiles.forEach(pollOne); }
+function pollAll() { if (!document.hidden) tiles.forEach((t) => { pollOne(t); pollConsole(t); }); }
+
+// --- console row --------------------------------------------------------
+// Moonraker keeps the last G-code commands and responses (gcode_store), the
+// same lines Mainsail's console shows. Temperature reports and bare "ok"
+// are left out, as Mainsail does by default.
+const CONSOLE_LINES = 100;
+const CONSOLE_SKIP = /^ok\s*$|^(ok\s+)?(B|T\d*):\s*-?[\d.]+\s*\//;
+const clock = (sec) => new Date(sec * 1000).toLocaleTimeString([], { hour12: false });
+async function pollConsole(t) {
+  if (t.p.show === false || !showRow("console")) return;
+  let items;
+  try {
+    items = (await getJson(moonrakerUrl(t.p, "/server/gcode_store?count=" + CONSOLE_LINES), 4000)).gcode_store || [];
+  } catch {
+    if (t.consoleKey !== "off") {
+      t.consoleKey = "off";
+      t.clog.innerHTML = '<span class="cmsg">Console unavailable</span>';
+      t.consoleStrip.textContent = "▸ Console · Disconnected";
+    }
+    return;
+  }
+  items = items.filter((x) => !CONSOLE_SKIP.test(x.message));
+  const last = items[items.length - 1];
+  const key = last ? last.time + "|" + last.message : "empty";
+  if (key === t.consoleKey) return;
+  t.consoleKey = key;
+  // Stay at the bottom unless the user scrolled up to read
+  const atEnd = t.clog.scrollHeight - t.clog.scrollTop - t.clog.clientHeight < 8;
+  const keep = t.clog.scrollTop;
+  t.clog.innerHTML = items.length
+    ? items.map((x) => {
+        const cls = x.type === "command" ? "cmd" : /^!!|^error/i.test(x.message) ? "err" : "";
+        return `<div><span class="ct">${clock(x.time)}</span><span class="${cls}">${esc(x.message)}</span></div>`;
+      }).join("")
+    : '<span class="cmsg">No console output yet</span>';
+  t.clog.scrollTop = atEnd ? t.clog.scrollHeight : keep;
+  const strip = last ? last.message.split("\n")[0] : "";
+  t.consoleStrip.textContent = "▸ Console" + (strip ? " · " + strip : "");
+  t.consoleStrip.title = strip ? strip + " (click to open the console)" : "Open this row";
+}
+async function sendGcode(t) {
+  const script = t.cinput.value.trim();
+  if (!script) return;
+  t.cHistory = t.cHistory.filter((x) => x !== script).concat([script]).slice(-50);
+  t.cHistIdx = t.cHistory.length;
+  t.cinput.value = "";
+  t.clog.scrollTop = t.clog.scrollHeight;
+  // Moonraker answers when the command finishes (G28 can take a while);
+  // refresh the log meanwhile instead of waiting on it
+  const done = fetch(moonrakerUrl(t.p, "/printer/gcode/script?script=" + encodeURIComponent(script)), { method: "POST" })
+    .catch(() => {});
+  setTimeout(() => pollConsole(t), 400);
+  await done;
+  pollConsole(t);
+}
+// Up/Down in the input walk this printer's sent commands
+function consoleHistory(t, e) {
+  if ((e.key !== "ArrowUp" && e.key !== "ArrowDown") || !t.cHistory.length) return;
+  e.preventDefault();
+  t.cHistIdx = Math.max(0, Math.min(t.cHistory.length, t.cHistIdx + (e.key === "ArrowUp" ? -1 : 1)));
+  t.cinput.value = t.cHistory[t.cHistIdx] || "";
+}
 setInterval(pollAll, STATUS_INTERVAL_MS);
 
 // --- fourth row: loaded spools ----------------------------------------
