@@ -15,22 +15,35 @@ It brings three earlier projects together: Printer Monitor (the multi-printer pa
 
 ## Install
 
+PrintWarden is a ready-made image, `ghcr.io/diehardave/printwarden` (amd64 and arm64, so a Raspberry Pi 4/5 works too). One command:
+
+```sh
+docker run -d --name printwarden --restart unless-stopped -p 8095:8095   -e TZ=Europe/Berlin   -v printwarden-data:/data -v printwarden-output:/output   ghcr.io/diehardave/printwarden:latest
+```
+
+Then open `http://<docker host>:8095/`, click **Printers…** and add your printers (or **Find printers** to scan a subnet). They are saved in the `/data` volume. Rendered timelapses land in the `/output` volume.
+
+Portainer, Unraid, TrueNAS or Synology: use the same image, publish port 8095 and mount two volumes, `/data` and `/output` (point `/output` at a share if you want the videos there).
+
+### With Docker Compose
+
 ```sh
 git clone https://github.com/DIEHARDave/PrintWarden.git
 cd PrintWarden
-cp .env.example .env                       # NAS share and credentials
-mkdir -p config && cp config.example.yaml config/config.yaml   # printers
-docker compose up -d --build
+cp .env.example .env      # optional: timezone, NAS share
+docker compose up -d
 docker compose logs -f
 ```
 
-Then open `http://<docker host>:8095/` and click **Printers…** to add printers (or **Find printers** to scan a subnet).
+- **Videos on a NAS (SMB share):** set `COMPOSE_FILE=docker-compose.yml:docker-compose.nas.yml` and the `NAS_*` lines in `.env`. The Docker host needs `cifs-utils`.
+- **Printers in a file instead of the page:** `mkdir -p config && cp config.example.yaml config/config.yaml`, edit it, then `docker compose restart`. Printers saved on the page are kept on top of it.
+- **Update:** `docker compose pull && docker compose up -d`. Pin a version with `image: ghcr.io/diehardave/printwarden:0.2.0`.
+- **Build from source:** `docker compose up -d --build`.
 
 ### Requirements
 
 - Printers running Moonraker. For timelapse rendering: [moonraker-timelapse](https://github.com/mainsail-crew/moonraker-timelapse) installed and **enabled**, and the slicer emitting `TIMELAPSE_TAKE_FRAME` per layer.
 - The Docker host can reach each printer's Moonraker port (7125). If Moonraker doesn't trust the host's address, set `api_key` for that printer.
-- A Docker host with `cifs-utils` (needed for the SMB volume).
 - The page talks to Moonraker from your browser, so each printer's `moonraker.conf` has to allow the page's origin:
 
   ```ini

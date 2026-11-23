@@ -1,11 +1,14 @@
 """Load and validate config.yaml, plus the web page's settings overlay."""
 
 import json
+import logging
 import re
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 import yaml
+
+log = logging.getLogger(__name__)
 
 TIMELAPSE_MODES = ("frames", "sync", "off")
 DETECT_MODES = ("off", "alert", "pause")
@@ -189,7 +192,13 @@ def parse_printers(items: list[dict]) -> list[Printer]:
 
 
 def load(path: Path) -> Config:
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    # No config file: start empty and add printers from the page (saved to
+    # settings_file), so the container runs with nothing but its volumes
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except FileNotFoundError:
+        log.warning("%s not found: starting without printers; add them on the page", path)
+        raw = {}
     printers = parse_printers(raw.pop("printers", None) or [])
     sub = {k: _build(cls, raw.pop(k, None), f"{path}: {k}")
            for k, cls in (("ffmpeg", FfmpegOptions), ("detection", DetectionOptions),

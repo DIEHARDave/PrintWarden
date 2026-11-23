@@ -1,28 +1,20 @@
-version: "3.8"
-
 services:
   printwarden:
+    image: ghcr.io/diehardave/printwarden:latest
     build: .
-    image: printwarden:latest
     container_name: printwarden
     restart: unless-stopped
     ports:
       - "8095:8095"   # monitor + settings page
     environment:
-      TZ: ${TZ:-America/New_York}
+      TZ: ${TZ:-UTC}
     volumes:
-      - ./config:/config:ro
+      - ./config:/config:ro   # optional config.yaml; printers can be added on the page
       - work:/work
-      - data:/data
-      - nas:/output
+      - data:/data            # settings, detection models, flagged frames
+      - output:/output        # rendered timelapses (docker-compose.nas.yml puts them on a NAS)
 
 volumes:
   work:
   data:
-  # The NAS share, mounted by Docker over SMB. Settings come from .env.
-  nas:
-    driver: local
-    driver_opts:
-      type: cifs
-      device: ${NAS_SHARE}
-      o: "username=${NAS_USER},password=${NAS_PASSWORD},uid=1000,gid=1000,file_mode=0664,dir_mode=0775,vers=3.0"
+  output:
