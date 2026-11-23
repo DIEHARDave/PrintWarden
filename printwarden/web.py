@@ -261,7 +261,7 @@ async def scan(request: web.Request) -> web.Response:
     try:
         net = ipaddress.ip_network(str(data.get("subnet", "")).strip(), strict=False)
     except ValueError:
-        return web.json_response({"error": "subnet must look like 10.0.1.0/24"}, status=400)
+        return web.json_response({"error": "subnet must look like 192.168.1.0/24"}, status=400)
     if net.version != 4 or net.num_addresses > SCAN_MAX_HOSTS:
         return web.json_response({"error": "use an IPv4 subnet of /22 or smaller"}, status=400)
     port = int(data.get("port") or 7125)

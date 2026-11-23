@@ -575,12 +575,12 @@
   <h2>Printers</h2>
   <p>Leave Name empty to use the name set in the printer's Mainsail. Host is the printer's address. Camera and Screen list the cameras and screen pages set up in the printer's Mainsail (its Moonraker webcam list); pick Custom… to type a path on that host or a full URL instead. The camera picked here is also the one the server checks for failures. Changes are saved in this browser.</p>
   <div class="rows" id="rows"></div>
-  <label class="spoolman-url">Spoolman <input type="text" id="spoolmanUrl" placeholder="http://10.0.1.206:7912 (empty = off)"></label>
+  <label class="spoolman-url">Spoolman <input type="text" id="spoolmanUrl" placeholder="http://192.168.1.20:7912 (empty = off)"></label>
   <section id="pwSet" hidden>
     <h2>Detection, alerts and timelapses</h2>
     <p>Each printer's row above has its server settings under it: tick <b>Watch</b> to have the PrintWarden server handle it. Timelapse: <b>Render frames</b> renders moonraker-timelapse frames on the server; <b>Copy videos</b> copies finished videos from printers that render on-device (Snapmaker U1). <b>Spaghetti</b> (Obico's model) and <b>Moved parts</b> each have their own setting: <b>Alert</b> notifies; <b>Alert + pause</b> also pauses the print. These live on the server, so they apply to everyone, and Save applies them at once. <span id="pwModel"></span></p>
     <div class="actions">
-      <input id="pwSubnet" style="width:150px" placeholder="10.0.1.0/24">
+      <input id="pwSubnet" style="width:150px" placeholder="192.168.1.0/24">
       <button type="button" id="pwScan" title="Look for Moonraker on port 7125 across the subnet">Find printers</button>
     </div>
     <div class="pwfound" id="pwFound"></div>
@@ -621,23 +621,19 @@
 // screenAr: the printer's screen shape, used for the enlarged view
 // rotate: 0, 90, 180, 270   flip: true mirrors horizontally
 // ---------------------------------------------------------------------
-const DEFAULT_PRINTERS = [
-  { name: "", host: "10.0.1.173", stream: "/webcam/stream.mjpg",    screen: "/screen/", screenAr: "3 / 2", rotate: 0, flip: false, show: true },
-  { name: "", host: "10.0.1.179", stream: "/webcam/?action=stream", screen: "/screen/", screenAr: "5 / 3", rotate: 0, flip: false, show: true },
-  { name: "", host: "10.0.1.198", stream: "/webcam/?action=stream", screen: "/screen/", screenAr: "5 / 3", rotate: 0, flip: false, show: true },
-  { name: "", host: "10.0.1.107", stream: "/webcam/?action=stream", screen: "/screen/", screenAr: "5 / 3", rotate: 0, flip: false, show: true },
-  { name: "", host: "10.0.1.96",  stream: "/webcam/?action=stream", screen: "",         screenAr: "5 / 3", rotate: 0, flip: false, show: true },
-  { name: "", host: "10.0.1.195", stream: "/webcam/?action=stream", screen: "",         screenAr: "5 / 3", rotate: 0, flip: false, show: true },
-];
+// Empty: a browser without a saved list starts from the server's printers
+// (config.yaml), or from Printers… → Find printers. Entries added here
+// later are appended once to lists saved before.
+const DEFAULT_PRINTERS = [];
 // Names this page shipped with before it read them from Mainsail. A saved
 // list still carrying one of these switches to the Mainsail name.
 const OLD_DEFAULT_NAMES = ["U1", "AD5X 179", "AD5X 198", "Creator 5", "Klipper1", "FLSun T1 Pro"];
 // Hosts that moved address. A saved list still using the old one switches
 // over (the C5's Wi-Fi address serves no HTTP; its wired one does).
-const MOVED_HOSTS = { "10.0.1.83": "10.0.1.107" };
+const MOVED_HOSTS = {};
 
 const MOONRAKER_PORT = 7125;
-const DEFAULT_SPOOLMAN = "http://10.0.1.206:7912";
+const DEFAULT_SPOOLMAN = "";
 const STATUS_INTERVAL_MS = 3000;
 const SPOOLS_INTERVAL_MS = 15000;
 const RETRY_MS = 5000;
@@ -2501,7 +2497,7 @@ function rowHtml(p) {
       </span>
       <input type="checkbox" data-k="show" ${p.show === false ? "" : "checked"} title="Show">
       <input type="text" data-k="name" value="${esc(p.name)}" placeholder="${esc(mainsailNameFor(p.host) || "From Mainsail")}">
-      <input type="text" data-k="host" value="${esc(p.host)}" placeholder="10.0.1.x">
+      <input type="text" data-k="host" value="${esc(p.host)}" placeholder="192.168.1.x">
       <span class="wide pick"><select data-pick="cam" title="Camera from the printer's webcam list"><option value="__custom">Custom…</option></select><input type="text" data-k="stream" value="${esc(p.stream)}" placeholder="/webcam/?action=stream"></span>
       <span class="wide pick"><select data-pick="screen" title="Screen page from the printer's webcam list"><option value="__custom">Custom…</option></select><input type="text" data-k="screen" value="${esc(p.screen || "")}" placeholder="none"></span>
       <select data-k="logoBg" class="wide" title="Box behind the logo">
@@ -2645,6 +2641,23 @@ $("saveSettings").addEventListener("click", async () => {
 });
 
 // --- go ---------------------------------------------------------------
+// First visit in this browser: take the printers the server watches
+const firstVisit = store.get("printers", null) === null;
+if (firstVisit) {
+  fetch("api/settings", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+    const list = (d?.printers || []).filter((x) => x.host);
+    if (!list.length || store.get("printers", null) !== null) return;
+    printers = list.map((x) => ({
+      name: "", host: x.host, stream: "/webcam/?action=stream", screen: "", screenAr: "5 / 3",
+      rotate: 0, flip: false, show: true,
+    }));
+    store.set("printers", printers);
+    buildGrid();
+    applyView();
+    pollAll();
+    refreshSpools();
+  }).catch(() => {});
+}
 buildGrid();
 applyView();
 pollAll();
