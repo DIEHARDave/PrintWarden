@@ -1518,6 +1518,7 @@ setInterval(pollAll, STATUS_INTERVAL_MS);
 // in Spoolman as "<printer name> <lane>", so Spoolman shows where each
 // spool is.
 let spoolmanSpools = new Map(); // id -> Spoolman spool
+let spoolByUid = new Map();     // tag UID (upper hex) -> spool id
 let spoolmanOk = false;
 
 async function spoolmanFetch(path, init = {}, ms = 6000) {
@@ -1537,6 +1538,14 @@ async function loadSpoolman() {
     // Archived too, so a lane still pointing at one resolves
     const list = await spoolmanFetch("/api/v1/spool?allow_archived=true");
     spoolmanSpools = new Map(list.map((s) => [s.id, s]));
+    // Tag UIDs: Spoolman 0.27's own `tags` (LaneTag, FF_NFC) and the older
+    // extra.card_uids (a JSON string, comma separated; SpoolLink reads only this)
+    spoolByUid = new Map();
+    list.forEach((s) => {
+      const uids = (s.tags || []).map((x) => x?.uid);
+      try { uids.push(...String(JSON.parse(s.extra?.card_uids || '""')).split(",")); } catch {}
+      uids.forEach((u) => { const k = normUid(u); if (k && !spoolByUid.has(k)) spoolByUid.set(k, s.id); });
+    });
     spoolmanOk = true;
   } catch {
     spoolmanOk = false;
@@ -1567,6 +1576,48 @@ function mergeLanes(entries) {
     out.push({ ...best, key: label, keys: g.map((e) => e.key) });
   });
   return out;
+}
+// Tag UID as upper hex: "53:1c:89", "531C89" or a byte list "83,28,137"
+function normUid(u) {
+  if (Array.isArray(u)) return u.length ? u.map((b) => (+b).toString(16).padStart(2, "0")).join("").toUpperCase() : "";
+  const str = String(u ?? "").trim();
+  if (/^\d+(,\d+)+$/.test(str)) return normUid(str.split(","));
+  const hex = str.replace(/[^0-9a-f]/gi, "").toUpperCase();
+  return hex.length >= 8 && /[1-9A-F]/.test(hex) ? hex : "";
+}
+// The tag in each lane, for lanes without a spool_id. The U1 reads tags
+// itself (filament_detect, one entry per lane); elsewhere lane_data may
+// carry the UID (HelixScreen's helix_fingerprint, card_uid / tag_uid).
+async function loadTagUids(t) {
+  const live = [];
+  try {
+    if (t.hasFilamentDetect === undefined) {
+      const objs = (await getJson(moonrakerUrl(t.p, "/printer/objects/list"), 4000))?.objects || [];
+      t.hasFilamentDetect = objs.includes("filament_detect");
+    }
+    if (t.hasFilamentDetect) {
+      const info = (await getJson(moonrakerUrl(t.p, "/printer/objects/query?filament_detect=info"), 4000))?.status?.filament_detect?.info || [];
+      info.forEach((x, i) => { live[i] = normUid(x?.CARD_UID); });
+    }
+  } catch {
+    t.hasFilamentDetect = undefined;
+  }
+  t.lanes.forEach((l) => {
+    const idx = /^\d+$/.test(String(l.lane)) ? +l.lane : null;
+    // filament_detect is live: an empty slot there means the tag is gone
+    l.tag_uid = t.hasFilamentDetect && idx !== null
+      ? live[idx] || ""
+      : normUid(l.card_uid ?? l.tag_uid ?? l.uid ?? l.helix_fingerprint);
+  });
+}
+// Lanes without a spool_id get the spool whose tag is in them
+function resolveTags(t) {
+  (t.lanes || []).forEach((l) => {
+    l.tag_spool = false;
+    if (isId(l.spool_id) || !l.tag_uid) return;
+    const id = spoolByUid.get(l.tag_uid);
+    if (id) { l.spool_id = id; l.tag_spool = true; }
+  });
 }
 async function loadLanes(t) {
   if (t.p.show === false) return;
@@ -1629,6 +1680,7 @@ async function loadLanes(t) {
   });
   if (order.length) t.lanes.sort((a, b) => (+a.lane - +b.lane) || a.key.localeCompare(b.key, undefined, { numeric: true }));
   if (t.lanes.length && t.laneState === "none") t.laneState = "ok";
+  await loadTagUids(t);
   try {
     t.activeSpool = (await getJson(moonrakerUrl(t.p, "/server/spoolman/spool_id"), 4000))?.spool_id ?? null;
   } catch {
@@ -1673,6 +1725,7 @@ async function refreshSpools() {
   spoolsBusy = true;
   try {
     await Promise.all([loadSpoolman(), ...tiles.map(loadLanes)]);
+    tiles.forEach(resolveTags);
     tiles.forEach(renderSpools);
     if (fitting()) scheduleFit();
   } finally {
@@ -1769,7 +1822,7 @@ function renderSpools(t) {
       const dup = id ? claimedElsewhere(t, id) : [];
 
       const tip = [
-        l.key + toolTip + (id ? ` · spool #${id}` : "") + (l.keys && l.keys.length > 1 ? ` (lane_data: ${l.keys.join(", ")})` : ""),
+        l.key + toolTip + (id ? ` · spool #${id}` : "") + (l.tag_spool ? " (from its tag; the printer has no spool set)" : "") + (l.keys && l.keys.length > 1 ? ` (lane_data: ${l.keys.join(", ")})` : ""),
         name, material, weight,
         s?.location ? "Spoolman location: " + s.location : "",
         id && spoolmanOk && !s ? "Not found in Spoolman" : "",
