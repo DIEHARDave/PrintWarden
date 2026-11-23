@@ -20,6 +20,10 @@ WEBCAM_REFRESH = 600
 HISTORY = 360          # score points kept for the page (1 h at 10 s)
 IDLE_POLL = 15         # print-state poll while not printing
 ACTIVE = ("printing", "paused")
+# Moved-part checks start once something is on the plate, not at job start
+# (heating, probing and purging can take many minutes, e.g. on the U1):
+MOTION_LAYER = 2       # ... from this layer on (slicer layer info, SET_PRINT_STATS_INFO)
+MOTION_EXTRUDE_S = 240  # ... or, without layer info, after this long of Klipper print_duration
 
 
 def snapshot_url(printer: Printer, cam: dict) -> str:
@@ -128,6 +132,10 @@ class Detector:
         self.motion = motion.MotionWatch()
         self.moved = False
         self.pos: tuple[float, float] | None = None
+        self.layer: int | None = None      # current / total layer from the slicer, None if unknown
+        self.layers: int | None = None
+        self.extrude_s = 0.0               # Klipper print_duration (counts from the first extrusion)
+        self.motion_open = False           # the plate has a print on it: moved-part checks run
         # Problem-type model (trial): current boxes, checks in a row per type, types alerted
         self.faults = fault_model
         self.fault_boxes: list[dict] = []
@@ -159,7 +167,7 @@ class Detector:
         return Snapshot(jpeg=data, taken=time.time())
 
     async def poll_state(self) -> None:
-        stats = await self.mr.get("/printer/objects/query", print_stats="state,filename,total_duration",
+        stats = await self.mr.get("/printer/objects/query", print_stats="state,filename,total_duration,print_duration,info",
                                   virtual_sdcard="progress", toolhead="position")
         st = stats["status"]
         pos = st.get("toolhead", {}).get("position") or []
@@ -168,6 +176,10 @@ class Detector:
         self.filename = st.get("print_stats", {}).get("filename", "") or self.filename
         self.progress = float(st.get("virtual_sdcard", {}).get("progress") or 0)
         self.print_duration = float(st.get("print_stats", {}).get("total_duration") or 0)
+        self.extrude_s = float(st.get("print_stats", {}).get("print_duration") or 0)
+        info = st.get("print_stats", {}).get("info") or {}
+        self.layer = info.get("current_layer") if isinstance(info.get("current_layer"), int) else None
+        self.layers = info.get("total_layer") if isinstance(info.get("total_layer"), int) else None
         old, self.state = self.state, new
         if old == new:
             return
@@ -193,8 +205,15 @@ class Detector:
         self.history.clear()
         self.ignored = self.warned = self.failed = self.paused_by_us = self.moved = False
         self.motion.reset()
+        self.motion_open = False
         self.fault_boxes, self.fault_streak, self.fault_alerted = [], {}, set()
         self.event("start", f"Print started: {self.filename}")
+
+    def motion_ready(self) -> bool:
+        """Is there a print on the plate yet? Layer info when the slicer sends it, else time extruding."""
+        if self.layers:
+            return (self.layer or 0) >= MOTION_LAYER
+        return self.extrude_s >= MOTION_EXTRUDE_S
 
     def event(self, kind: str, text: str) -> None:
         self.events.appendleft({"t": time.time(), "kind": kind, "text": text})
@@ -243,7 +262,14 @@ class Detector:
         score = self.pred.normalized(sens)
         self.history.append((round(snap.taken), round(score, 3)))
         mres = None
-        if self.printer.motion != "off":
+        if self.printer.motion != "off" and not self.motion_open:
+            if self.motion_ready():
+                self.motion_open = True
+                self.motion.reset(now=snap.taken)     # the reference is the printed plate, not prep
+                self.log.info("motion: print on the plate (layer %s), learning the scene", self.layer)
+            else:
+                self.motion.last = motion.MotionResult(state="waiting")
+        if self.printer.motion != "off" and self.motion_open:
             was = self.motion.last.state
             mres = await asyncio.to_thread(self.motion.update, snap.jpeg, snap.taken, size,
                                            self.printer.motion_sensitivity, self.pos)

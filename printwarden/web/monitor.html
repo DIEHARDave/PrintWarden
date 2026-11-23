@@ -2010,7 +2010,7 @@ function watchSpark(hist) {
     <line x1="0" x2="${w}" y1="${h / 3}" y2="${h / 3}" stroke="var(--err)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>
     <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
 }
-const MOTION_TEXT = { learning: ["Learning the scene", "text"], ok: ["Not moved", "text"], reset: ["Picture changed, starting over", "text"],
+const MOTION_TEXT = { waiting: ["Waiting for the first layer", "text"], learning: ["Learning the scene", "text"], ok: ["Not moved", "text"], reset: ["Picture changed, starting over", "text"],
   candidate: ["Changed, checking it stays", "warn"], moved: ["Moved or came loose", "err"] };
 function renderRow(t) {
   const w = t.watch;
@@ -2027,7 +2027,7 @@ function renderRow(t) {
     if (w.motion) {
       const [txt, mcol] = MOTION_TEXT[w.motion.state] || MOTION_TEXT.ok;
       const pct = Math.round(Math.min(1, w.motion.score || 0) * 100);
-      parts.push(`<div class="wline"><span class="lbl">Part position</span><div class="meter"><i style="left:${Math.min(99.5, pct)}%"></i></div><span class="val" style="color:var(--${mcol})">${esc(w.motion.state === "learning" ? txt : `${pct}% · ${txt}`)}</span></div>`);
+      parts.push(`<div class="wline"><span class="lbl">Part position</span><div class="meter"><i style="left:${Math.min(99.5, pct)}%"></i></div><span class="val" style="color:var(--${mcol})">${esc(["learning", "waiting"].includes(w.motion.state) ? txt : `${pct}% · ${txt}`)}</span></div>`);
     }
     if (w.faults) {
       const seen = {};
