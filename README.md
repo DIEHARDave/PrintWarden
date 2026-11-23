@@ -25,6 +25,20 @@ Then open `http://<docker host>:8095/`, click **Printers…** and add your print
 
 Portainer, Unraid, TrueNAS or Synology: use the same image, publish port 8095 and mount two volumes, `/data` and `/output` (point `/output` at a share if you want the videos there).
 
+### Without Docker (native install)
+
+On Debian, Ubuntu, Raspberry Pi OS (64-bit), Fedora, Arch or openSUSE:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/DIEHARDave/PrintWarden/main/install.sh | sudo bash
+```
+
+It installs Python 3 and ffmpeg from the distro, puts PrintWarden in a virtualenv under `/opt/printwarden`, keeps its data in `/var/lib/printwarden` and runs it as the systemd service `printwarden` (user `printwarden`). Logs: `journalctl -u printwarden -f`. Run it again to update; settings and data stay.
+
+Options: `--output /mnt/nas/timelapses` (where videos go; default `/var/lib/printwarden/timelapses`), `--port 8096`, `--version v0.3.0`, `--uninstall` (keeps data; add `--purge` to delete it). From a clone, `sudo ./install.sh` installs that checkout. Paths live in `/etc/printwarden/printwarden.env`, the optional `config.yaml` in `/etc/printwarden/`.
+
+Needs Python 3.10 or newer and a 64-bit CPU (x86-64 or ARM64) for failure detection; on 32-bit ARM the page and timelapses still work. Fedora/RHEL need RPM Fusion and openSUSE needs Packman for ffmpeg.
+
 ### With Docker Compose
 
 ```sh
@@ -128,7 +142,7 @@ Snapshots are fetched from the printer's web port (the `snapshot_url` in its web
 
 ### Problem types (trial)
 
-A second model, trained by us (`tools/train_detector.py` on public CC BY 4.0 Roboflow sets plus frames labelled here), boxes spaghetti, stringing, under- and over-extrusion, warping, blobs, cracks and loose parts on the same snapshots. It is optional: put the exported ONNX at `/data/models/faults.onnx` (a new file is picked up at the next check) and remove it to turn it off. It is in trial: it only alerts, never pauses, once a type stays above 50% for 3 checks in a row, once per type per print, and "Not a failure" silences it like the rest. The page draws its boxes in that type's color from the label page, with the type and confidence, and the detection row lists what it sees now. About 0.2 s per check on a 2-vCPU host.
+A second model, trained by us (`tools/train_detector.py` on public CC BY 4.0 Roboflow sets plus frames labelled here), boxes spaghetti, stringing, under- and over-extrusion, warping, blobs, cracks and loose parts on the same snapshots. It is downloaded (about 11 MB, checked against its SHA-256) from this project's [v0.3.0 release](https://github.com/DIEHARDave/PrintWarden/releases/tag/v0.3.0) into `<data>/models/faults.onnx` the first time a printer has detection on. A `faults.onnx` you train yourself and put there is used as is and never replaced (a new file is picked up at the next check). `detection.problem_types: false` in config.yaml turns it off. It is in trial: it only alerts, never pauses, once a type stays above 50% for 3 checks in a row, once per type per print, and "Not a failure" silences it like the rest. The page draws its boxes in that type's color from the label page, with the type and confidence, and the detection row lists what it sees now. About 0.2 s per check on a 2-vCPU host.
 
 `tools/check_false_alarms.py` runs a model over our own timelapse videos and reports how often it would have flagged a frame; anything it finds on a good print is a false alarm, and those frames belong on the label page as "looks fine" before the next training run.
 
@@ -160,6 +174,18 @@ Printers without moonraker-timelapse and without a Moonraker file root of finish
 
 PrintWarden replaces the [printer-monitor](https://github.com/DIEHARDave/printer-monitor) and TimelapseOffload repositories, whose histories are merged in here. The old Print Watch page at `/watch/` now redirects to the main page.
 
+### Training data
+
+The full dataset the shipped model (v4) was trained on is on the same release: [printwarden-training-v4.zip](https://github.com/DIEHARDave/PrintWarden/releases/download/v0.3.0/printwarden-training-v4.zip) (about 670 MB, YOLO format: `train/`, `valid/`, `test/`, `data.yaml` with the 10 problem types, `ATTRIBUTION.txt`). Unzip it, add your own frames exported from the label page, and train with `tools/train_detector.py`.
+
+It combines these CC BY 4.0 sets from Roboflow Universe, relabelled to our problem types:
+
+- [All_Anomalies](https://universe.roboflow.com/3d-printer-failure/all_anomalies-rfe61/dataset/1) by 3d-printer-failure
+- [FDM](https://universe.roboflow.com/3d-printer-failure/fdm-w6znp-qnbzd/dataset/2) by 3d-printer-failure
+- [3D printing failure](https://universe.roboflow.com/3d-printing-failure/3d-printing-failure/dataset/1) by 3d-printing-failure
+
+plus frames from our own printers labelled on the label page, released under CC BY 4.0 as well.
+
 ## License
 
-GPL-3.0. Obico's failure-detection model is AGPL-3.0, downloaded at first use and not part of this repository. The public training sets are CC BY 4.0 (see `tools/build_dataset.py` for attribution).
+GPL-3.0. Obico's failure-detection model is AGPL-3.0, downloaded at first use and not part of this repository. Our problem-type model is a YOLO11n fine-tune (Ultralytics, AGPL-3.0) and is AGPL-3.0 too; it is downloaded from the release, not part of the repository. The training data is CC BY 4.0 (see above).

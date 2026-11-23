@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
@@ -9,6 +10,12 @@ from pathlib import Path
 import yaml
 
 log = logging.getLogger(__name__)
+
+# Where state lives. The container uses /data, /work and /output; a native
+# install (install.sh) points these at /var/lib/printwarden and friends.
+DATA_DIR = Path(os.environ.get("PRINTWARDEN_DATA", "/data"))
+WORK_DIR = Path(os.environ.get("PRINTWARDEN_WORK", "/work"))
+OUTPUT_DIR = Path(os.environ.get("PRINTWARDEN_OUTPUT", "/output"))
 
 TIMELAPSE_MODES = ("frames", "sync", "off")
 DETECT_MODES = ("off", "alert", "pause")
@@ -86,9 +93,11 @@ class DetectionOptions:
     interval: int = 10
     # CPU threads per inference (one inference runs at a time).
     threads: int = 1
-    model_dir: Path = Path("/data/models")
+    model_dir: Path = DATA_DIR / "models"
+    # Our problem-type model (downloaded on first use); false turns it off.
+    problem_types: bool = True
     # Frames that triggered an alert/pause are kept here.
-    flagged_dir: Path = Path("/data/flagged")
+    flagged_dir: Path = DATA_DIR / "flagged"
 
 
 @dataclass
@@ -108,12 +117,12 @@ class WebOptions:
 @dataclass
 class Config:
     printers: list[Printer]
-    output_dir: Path = Path("/output")
-    work_dir: Path = Path("/work")
-    state_file: Path = Path("/data/state.json")
+    output_dir: Path = OUTPUT_DIR
+    work_dir: Path = WORK_DIR
+    state_file: Path = DATA_DIR / "state.json"
     # Printers, detection and notify settings saved from the web page. When this
     # file exists its printer list replaces the one in config.yaml.
-    settings_file: Path = Path("/data/settings.json")
+    settings_file: Path = DATA_DIR / "settings.json"
     # Turn moonraker-timelapse's own render off on every printer we connect to.
     disable_printer_render: bool = True
     render_cancelled: bool = False

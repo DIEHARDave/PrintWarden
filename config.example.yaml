@@ -44,7 +44,8 @@ ffmpeg:
 detection:
   interval: 10       # seconds between checks while printing (scoring is tuned for 10)
   threads: 1         # CPU threads per check; checks run one at a time
-  # model_dir: /data/models     # the ~200 MB model is downloaded here on first use
+  # model_dir: /data/models     # the models are downloaded here on first use (~200 MB + ~11 MB)
+  # problem_types: true         # our problem-type model (trial, alert only); false turns it off
   # flagged_dir: /data/flagged  # frames that triggered an alert or pause
 
 notify:

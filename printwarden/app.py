@@ -421,7 +421,9 @@ class Supervisor:
         self.state = State(cfg.state_file)
         self.slots = asyncio.Semaphore(cfg.max_parallel_renders)
         self.model = Model(cfg.detection.model_dir, cfg.detection.threads)
-        self.fault_model = FaultModel(cfg.detection.model_dir, cfg.detection.threads)
+        self.fault_model = FaultModel(cfg.detection.model_dir, cfg.detection.threads,
+                                      cfg.detection.problem_types)
+        self._fetching: asyncio.Task | None = None
         self.store = PredictionStore(cfg.state_file.with_name("detect_state.json"))
         self.notifier = Notifier(cfg, session)
         self.watchers: dict[str, tuple[Printer, asyncio.Task]] = {}
@@ -461,6 +463,9 @@ class Supervisor:
                 self.detectors[name] = (d, asyncio.create_task(d.run(), name=f"det:{name}"))
         if any(p.detect != "off" for p in self.cfg.printers) and self.model._session is None                 and (self._warming is None or self._warming.done()):
             self._warming = asyncio.create_task(self.model.warm())
+        if any(p.detect != "off" for p in self.cfg.printers) and self.fault_model.wants_download() \
+                and (self._fetching is None or self._fetching.done()):
+            self._fetching = asyncio.create_task(self.fault_model.fetch())
         logging.getLogger("supervisor").info(
             "running: timelapse %s; detection %s",
             ", ".join(f"{n} ({p.mode})" for n, (p, _) in self.watchers.items()) or "none",

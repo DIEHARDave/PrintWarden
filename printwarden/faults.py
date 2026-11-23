@@ -3,17 +3,22 @@ spaghetti, stringing, under/over-extrusion, warping, blobs, cracks and loose par
 
 It runs next to the Obico spaghetti model, on the same snapshots. Trial mode:
 it only alerts, after a type stays above ALERT_CONF for ALERT_STREAK checks in a
-row, once per type per print, and never pauses. If <model_dir>/faults.onnx is
-missing it is simply off.
+row, once per type per print, and never pauses. The model is downloaded from
+this project's GitHub release into <model_dir>/faults.onnx the first time a
+printer has detection on (checked against its SHA-256). A faults.onnx put
+there by hand (your own training run) is used as is and never replaced.
+detection.problem_types: false in config.yaml turns it off.
 """
 
 from __future__ import annotations
 
 import ast
 import asyncio
+import hashlib
 import io
 import logging
 import time
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +29,11 @@ from .detect import nms
 log = logging.getLogger(__name__)
 
 MODEL_FILE = "faults.onnx"
+# v4: YOLO11n trained on the CC BY 4.0 Roboflow sets + our labelled frames
+# (training data: printwarden-training-v4.zip on the same release)
+MODEL_URL = "https://github.com/DIEHARDave/PrintWarden/releases/download/v0.3.0/faults-v4.onnx"
+MODEL_SHA256 = "2932c53dec171503a382e5a6b4c513097ea745917567cdd57d7c716523883bd7"
+RETRY_S = 3600         # a failed download is tried again after this long
 BOX_CONF = 0.25        # lowest box kept from the model
 SHOW_CONF = 0.35       # drawn on the page
 ALERT_CONF = 0.5       # counts towards an alert
@@ -34,18 +44,52 @@ NMS_IOU = 0.5
 class FaultModel:
     """ONNX YOLO (Ultralytics export, output [1, 4 + classes, anchors]). One inference at a time."""
 
-    def __init__(self, model_dir: Path, threads: int):
+    def __init__(self, model_dir: Path, threads: int, enabled: bool = True):
         self.path = model_dir / MODEL_FILE
         self.threads = threads
+        self.enabled = enabled
         self._session = None
         self._mtime = 0.0
         self._lock = asyncio.Lock()
+        self._tried = 0.0
         self.names: dict[int, str] = {}
         self.error = ""
 
     @property
     def available(self) -> bool:
-        return self.path.is_file()
+        return self.enabled and self.path.is_file()
+
+    def wants_download(self) -> bool:
+        return self.enabled and not self.path.is_file() \
+            and (not self._tried or time.monotonic() - self._tried > RETRY_S)
+
+    def _download(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        part = self.path.with_suffix(".part")
+        log.info("downloading problem-type model (~11 MB)")
+        digest = hashlib.sha256()
+        with urllib.request.urlopen(MODEL_URL, timeout=60) as resp, part.open("wb") as out:
+            while chunk := resp.read(1 << 20):
+                digest.update(chunk)
+                out.write(chunk)
+        if digest.hexdigest() != MODEL_SHA256:
+            part.unlink(missing_ok=True)
+            raise RuntimeError("problem-type model download failed its checksum")
+        part.replace(self.path)
+        log.info("problem-type model saved to %s", self.path)
+
+    async def fetch(self) -> None:
+        """Download the model if it is wanted and missing (once an hour at most on failure)."""
+        async with self._lock:
+            if not self.wants_download():
+                return
+            self._tried = time.monotonic()
+            try:
+                await asyncio.to_thread(self._download)
+                self.error = ""
+            except Exception as e:
+                self.error = f"problem-type model download failed: {e}"
+                log.error("%s", self.error)
 
     def _load(self):
         import onnxruntime as ort
