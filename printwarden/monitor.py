@@ -373,6 +373,12 @@ class Detector:
         self.event("ignored", "Marked as not a failure; no more alerts this print")
         self.motion.reset(keep_frames=True)
 
+    def unignore(self) -> None:
+        if not self.ignored:
+            return
+        self.ignored = False
+        self.event("unignored", "Not a failure undone; alerts are on again")
+
     def status(self) -> dict:
         p = self.printer
         sens = p.sensitivity

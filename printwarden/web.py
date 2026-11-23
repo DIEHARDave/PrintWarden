@@ -114,6 +114,11 @@ async def ignore(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def unignore(request: web.Request) -> web.Response:
+    _detector(request).unignore()
+    return web.json_response({"ok": True})
+
+
 async def webcams(request: web.Request) -> web.Response:
     """Webcam names with snapshots on any host (the printer may not be saved yet)."""
     sup = request.app["sup"]
@@ -302,6 +307,7 @@ async def start(sup) -> web.AppRunner:
         web.get("/api/status", status),
         web.get("/api/printers/{name}/snapshot.jpg", snapshot),
         web.post("/api/printers/{name}/ignore", ignore),
+        web.post("/api/printers/{name}/unignore", unignore),
         web.post("/api/printers/{name}/detect", set_detect),
         web.get("/api/webcams", webcams),
         web.get("/api/printers/{name}/flagged/{file}", flagged),
