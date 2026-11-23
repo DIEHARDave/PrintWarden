@@ -1606,6 +1606,9 @@ async function loadLanes(t) {
       if (a.material) l.material = a.material;
       l.name = l.spool_name = l.ff_nfc_name = l.zmod_nfc_name = l.spoolsync_product_name = undefined;
     }
+    // lane_data without a color (HelixScreen on the U1 writes null for some
+    // tags): AFC's lane color is the one the printer shows
+    if (a && !normHex(l.color) && normHex(a.color)) l.color = a.color;
     const p = (afcLane && afc.get(afcLane)) ?? afc.get(l.key) ?? (l.keys || []).map((k) => afc.get(k)).find((v) => v !== undefined);
     l.absent = p === false || (p === undefined && l.loaded === false);
   });
