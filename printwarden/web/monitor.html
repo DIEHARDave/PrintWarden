@@ -119,13 +119,15 @@
   .rw.rdrop-after { box-shadow: 0 2px 0 var(--accent); }
   /* Collapsed: a thin strip with the row's name instead of the row */
   .rw > .rcol {
-    display: none; min-height: 17px; line-height: 16px; padding: 0 6px;
+    display: none; align-items: center; gap: 4px; min-height: 17px; line-height: 16px; padding: 0 6px;
     border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); cursor: pointer;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; overflow: hidden;
   }
+  .rcol .ricon { flex: none; width: 13px; height: 13px; fill: currentColor; }
+  .rcol .rtxt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .rw > .rcol:hover { color: var(--accent); }
   .rw.collapsed > .rbody { display: none; }
-  .rw.collapsed > .rcol { display: block; }
+  .rw.collapsed > .rcol { display: flex; }
   /* Rows switched off in the Rows menu */
   .no-cam .rw[data-row="cam"], .no-screens .rw[data-row="screen"], .no-cards .rw[data-row="card"],
   .no-spools .rw[data-row="spools"], .no-ai .rw[data-row="ai"], .no-console .rw[data-row="console"] { display: none; }
@@ -710,6 +712,19 @@ const view = Object.assign(
 // shown) are carried over once.
 const ROW_NAMES = { cam: "Camera", screen: "Screen", card: "Card", spools: "Spools", ai: "AI Monitor", console: "Console" };
 const ALL_ROWS = Object.keys(ROW_NAMES);
+// Material Design Icons (as Fluidd uses): webcam, monitor, card-text-outline,
+// cube-outline (Fluidd's AFC panel), eye-check-outline, console
+const ROW_ICONS = {
+  cam: "M12,2A7,7 0 0,1 19,9A7,7 0 0,1 12,16A7,7 0 0,1 5,9A7,7 0 0,1 12,2M12,4A5,5 0 0,0 7,9A5,5 0 0,0 12,14A5,5 0 0,0 17,9A5,5 0 0,0 12,4M12,6A3,3 0 0,1 15,9A3,3 0 0,1 12,12A3,3 0 0,1 9,9A3,3 0 0,1 12,6M6,22A2,2 0 0,1 4,20C4,19.62 4.1,19.27 4.29,18.97L6.11,15.81C7.69,17.17 9.75,18 12,18C14.25,18 16.31,17.17 17.89,15.81L19.71,18.97C19.9,19.27 20,19.62 20,20A2,2 0 0,1 18,22H6Z",
+  screen: "M21,16H3V4H21M21,2H3C1.89,2 1,2.89 1,4V16A2,2 0 0,0 3,18H10V20H8V22H16V20H14V18H21A2,2 0 0,0 23,16V4C23,2.89 22.1,2 21,2Z",
+  card: "M20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20M4,6V18H20V6H4M6,9H18V11H6V9M6,13H16V15H6V13Z",
+  spools: "M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L6.04,7.5L12,10.85L17.96,7.5L12,4.15M5,15.91L11,19.29V12.58L5,9.21V15.91M19,15.91V9.21L13,12.58V19.29L19,15.91Z",
+  ai: "M23.5,17L18.5,22L15,18.5L16.5,17L18.5,19L22,15.5L23.5,17M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9M12,4.5C17,4.5 21.27,7.61 23,12C22.75,12.65 22.44,13.26 22.08,13.85C21.5,13.5 20.86,13.25 20.18,13.12L20.82,12C19.17,8.64 15.76,6.5 12,6.5C8.24,6.5 4.83,8.64 3.18,12C4.83,15.36 8.24,17.5 12,17.5L13.21,17.43C13.07,17.93 13,18.46 13,19V19.46L12,19.5C7,19.5 2.73,16.39 1,12C2.73,7.61 7,4.5 12,4.5Z",
+  console: "M20,19V7H4V19H20M20,3A2,2 0 0,1 22,5V19A2,2 0 0,1 20,21H4A2,2 0 0,1 2,19V5C2,3.89 2.9,3 4,3H20M13,17V15H18V17H13M9.58,13L5.57,9H8.4L11.7,12.3C12.09,12.69 12.09,13.33 11.7,13.72L8.42,17H5.59L9.58,13Z",
+};
+const rowIcon = (r) => `<svg class="ricon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ROW_ICONS[r]}"/></svg>`;
+// Folded row: ▸, the row's icon and its name (plus a status for some rows)
+const rowStrip = (r) => `<div class="rcol" title="Open this row">▸ ${rowIcon(r)}<span class="rtxt">${ROW_NAMES[r]}</span></div>`;
 if (!Array.isArray(view.order)) {
   let shown = view.rows;
   if (!Array.isArray(shown)) {
@@ -894,7 +909,7 @@ function applyRows() {
   rowsWas = { cam: showRow("cam"), screen: showRow("screen"), spools: showRow("spools"), console: showRow("console") };
   renderRowsMenu();
   equalizeRows();
-  document.querySelectorAll(".rcol[data-texts]").forEach(fitStrip);
+  document.querySelectorAll(".rtxt[data-texts]").forEach(fitStrip);
 }
 // Rows menu: switch rows on or off. Order and collapse are on each row's bar.
 function renderRowsMenu() {
@@ -937,7 +952,7 @@ function fitStrip(el) {
     if (!el.clientWidth || el.scrollWidth <= el.clientWidth) break;
   }
 }
-window.addEventListener("resize", () => document.querySelectorAll(".rcol[data-texts]").forEach(fitStrip));
+window.addEventListener("resize", () => document.querySelectorAll(".rtxt[data-texts]").forEach(fitStrip));
 function toggleCollapse(r) {
   view.collapsed = view.collapsed.includes(r) ? view.collapsed.filter((x) => x !== r) : view.collapsed.concat([r]);
   applyView();
@@ -1084,17 +1099,17 @@ function buildGrid() {
         <span class="state">…</span>
         <span class="temps"></span>
       </div>
-      <div class="rw" data-row="cam"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ Camera</div><div class="rbody">
+      <div class="rw" data-row="cam"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div>${rowStrip("cam")}<div class="rbody">
       <div class="video"><img class="cam" alt=""><img class="logo" alt="" hidden><svg class="ov" aria-hidden="true"></svg><div class="vfoot"><button type="button" class="wsnap" hidden title="Capture this frame for training data: box the problem and say what it is"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button></div><div class="msg">Connecting…</div></div>
       <div class="progress"><div></div></div>
       <div class="file"></div>
       </div></div>
-      <div class="rw" data-row="screen"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ Screen</div><div class="rbody">
+      <div class="rw" data-row="screen"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div>${rowStrip("screen")}<div class="rbody">
       ${p.screen
         ? `<div class="screen"><iframe loading="lazy"></iframe><div class="shield" title="Open screen"></div></div>`
         : `<div class="screen empty">No remote screen</div>`}
       </div></div>
-      <div class="rw" data-row="card"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ Card</div><div class="rbody">
+      <div class="rw" data-row="card"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div>${rowStrip("card")}<div class="rbody">
       <div class="card">
         <a class="cimg" href="${esc(webUrl(p))}" target="_blank" rel="noopener">
           <div class="cbar">
@@ -1106,13 +1121,13 @@ function buildGrid() {
         <div class="cprev"></div>
       </div>
       </div></div>
-      <div class="rw" data-row="spools"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ Spools</div><div class="rbody">
+      <div class="rw" data-row="spools"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div>${rowStrip("spools")}<div class="rbody">
       <div class="spools">
         <div class="lanes"><div class="smsg">Loading spools…</div></div>
         <div class="sfoot"><span class="sstate"></span><button type="button" class="ssync" disabled title="Set each loaded spool's Location in Spoolman to this printer and lane, and clear it on spools no longer loaded here">Sync</button></div>
       </div>
       </div></div>
-      <div class="rw" data-row="ai"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ AI Monitor</div><div class="rbody">
+      <div class="rw" data-row="ai"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div>${rowStrip("ai")}<div class="rbody">
       <div class="aimon">
         <div class="aihead"><span class="aititle">AI Monitor</span><span class="wchips"></span></div>
         <a class="aistate" href="label/" target="_blank" rel="noopener"></a>
@@ -1120,7 +1135,7 @@ function buildGrid() {
         <div class="aiact" hidden></div>
       </div>
       </div></div>
-      <div class="rw" data-row="console"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div><div class="rcol" title="Open this row">▸ Console</div><div class="rbody">
+      <div class="rw" data-row="console"><div class="rbar"><button type="button" class="rgrip" title="Drag to move this row (all printers)">⠿</button><button type="button" class="rfold" title="Fold or open this row (all printers)">▾</button></div>${rowStrip("console")}<div class="rbody">
       <div class="console">
         <div class="clog"><span class="cmsg">Loading console…</span></div>
         <form><input type="text" placeholder="Send G-code…" spellcheck="false" autocomplete="off"><button type="submit">Send</button></form>
@@ -1136,7 +1151,7 @@ function buildGrid() {
       cstatus: el.querySelector(".cstatus"),
       cfile: el.querySelector(".cfile"),
       cprev: el.querySelector(".cprev"),
-      cardStrip: el.querySelector('.rw[data-row="card"] .rcol'),
+      cardStrip: el.querySelector('.rw[data-row="card"] .rtxt'),
       cardBg: "",
       thumb: null,       // { file, url } for the current print file
       heaters: null,     // extruder / chamber objects this printer has
@@ -1164,7 +1179,7 @@ function buildGrid() {
       syncMsg: "",
       clog: el.querySelector(".console .clog"),
       cinput: el.querySelector(".console input"),
-      consoleStrip: el.querySelector('.rw[data-row="console"] .rcol'),
+      consoleStrip: el.querySelector('.rw[data-row="console"] .rtxt'),
       consoleKey: null,  // newest line shown, to skip redraws
       cHistory: [], cHistIdx: 0,
     };
@@ -1350,7 +1365,7 @@ async function pollOne(t) {
     bar.style.width = "0";
     fileEl.textContent = "";
     t.cstatus.textContent = "Disconnected";
-    t.cardStrip.textContent = "▸ Card · Disconnected";
+    t.cardStrip.textContent = "Card · Disconnected";
     t.cfile.textContent = "";
     t.cprev.innerHTML = "";
   }
@@ -1411,7 +1426,7 @@ function updateCard(t, s, heaters) {
     (n, v) => `${n} ${v}`,
     (n, v) => `${n} ${v.replace("° / ", "/")}`,
     (n, v) => `${short(n)} ${v.replace("° / ", "/")}`,
-  ].map((fmt) => "▸ " + [status, ...items.map(([n, v]) => fmt(n, v))].join(" · ")));
+  ].map((fmt) => ["Card", status, ...items.map(([n, v]) => fmt(n, v))].join(" · ")));
   fitStrip(t.cardStrip);
   t.cardStrip.title = [status, file, ...items.map(([n, v]) => `${n} ${v}`)].filter(Boolean).join(" · ") + " (click to open the card)";
 }
@@ -1476,7 +1491,7 @@ async function pollConsole(t) {
     if (t.consoleKey !== "off") {
       t.consoleKey = "off";
       t.clog.innerHTML = '<span class="cmsg">Console unavailable</span>';
-      t.consoleStrip.textContent = "▸ Console · Disconnected";
+      t.consoleStrip.textContent = "Console · Disconnected";
     }
     return;
   }
@@ -1499,7 +1514,7 @@ async function pollConsole(t) {
     : '<span class="cmsg">No console output yet</span>';
   t.clog.scrollTop = atEnd ? t.clog.scrollHeight : keep;
   const strip = last ? last.message.split("\n")[0] : "";
-  t.consoleStrip.textContent = "▸ Console" + (strip ? " · " + strip : "");
+  t.consoleStrip.textContent = "Console" + (strip ? " · " + strip : "");
   t.consoleStrip.title = strip ? strip + " (click to open the console)" : "Open this row";
 }
 async function sendGcode(t) {
