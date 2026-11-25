@@ -1984,7 +1984,7 @@ function renderWatch(t) {
   else if (w.ignored) text = "Not a failure (this print)";
   else if (moved) text = "Part moved or came loose";
   else if (w.faults?.alerted?.length) text = "Possible " + w.faults.alerted.map((k) => (FAULT_NAMES[k] || k).toLowerCase()).join(", ");
-  else if (!w.frames) text = w.state === "paused" ? "Paused" : "Starting";
+  else if (!w.frames) text = w.state === "paused" ? "Paused" : w.extruding === false ? "Waiting for the first layer" : "Starting";
   else if (w.level === "warming") text = `Learning ${w.frames}/${w.safe_frames}`;
   else text = `${WATCH_LEVEL[w.level] || w.level} · ${Math.round((w.score || 0) * 100)}%`;
   if (watching && !moved && w.motion?.state === "candidate") text += " · part changed?";
@@ -2080,7 +2080,7 @@ function renderRow(t) {
   if (watching) {
     const lvl = w.score_level || w.level, score = Math.round((w.score || 0) * 100);
     const col = lvl === "failing" ? "err" : lvl === "warning" ? "warn" : "text";
-    const val = !w.frames ? (w.state === "paused" ? "Waiting for resume" : "Starting")
+    const val = !w.frames ? (w.state === "paused" ? "Waiting for resume" : w.extruding === false ? "Waiting for the first layer" : "Starting")
       : lvl === "warming" ? `Learning ${w.frames}/${w.safe_frames}` : `${score}% · ${WATCH_LEVEL[lvl] || lvl}`;
     parts.push(`<div class="wline"><span class="lbl">Failure score</span><div class="meter"><i style="left:${Math.min(99.5, score)}%"></i></div><span class="val" style="color:var(--${col})">${esc(val)}</span></div>`);
     parts.push(watchSpark(w.history));

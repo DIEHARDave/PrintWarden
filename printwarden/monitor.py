@@ -209,6 +209,14 @@ class Detector:
         self.fault_boxes, self.fault_streak, self.fault_alerted = [], {}, set()
         self.event("start", f"Print started: {self.filename}")
 
+    def extruding(self) -> bool:
+        """Has the print itself started? Heat-up and PRINT_START already count as "printing" in
+        Klipper, so the failure models wait for layer 1 (slicer layer info), or without it for
+        Klipper's print_duration, which only starts counting at the first extrusion."""
+        if self.layers:
+            return (self.layer or 0) >= 1
+        return self.extrude_s > 0
+
     def motion_ready(self) -> bool:
         """Is there a print on the plate yet? Layer info when the slicer sends it, else time extruding."""
         if self.layers:
@@ -256,11 +264,15 @@ class Detector:
         snap.boxes, snap.size = boxes, size
         self.snap = snap
         self.infer_seconds = secs
-        self.pred.update(sum(b["conf"] for b in boxes))
-        self.store.put(self.printer.name, self.pred)
+        started = self.extruding()
+        if started:
+            self.pred.update(sum(b["conf"] for b in boxes))
+            self.store.put(self.printer.name, self.pred)
+            self.history.append((round(snap.taken), round(self.pred.normalized(
+                self.printer.sensitivity), 3)))
+        else:
+            snap.boxes = []     # heat-up / start macro: nothing printed to judge yet
         sens = self.printer.sensitivity
-        score = self.pred.normalized(sens)
-        self.history.append((round(snap.taken), round(score, 3)))
         mres = None
         if self.printer.motion != "off" and not self.motion_open:
             if self.motion_ready():
@@ -278,7 +290,7 @@ class Detector:
             if mres.state == "candidate" and was != "candidate":
                 self.log.info("motion: possible move (area %.3f)", mres.area)
                 self.event("motion", "Something changed on the bed; checking it stays")
-        if self.printer.detect != "off":
+        if self.printer.detect != "off" and started:
             await self.check_faults(snap)
         else:
             self.fault_boxes, self.fault_streak = [], {}
@@ -305,7 +317,7 @@ class Detector:
                 await self.alert(snap, "moved", "A part moved or came loose", 0xD83C3E,
                                  before)
             return
-        if self.printer.detect == "off":
+        if self.printer.detect == "off" or not started:
             return
         failing = self.pred.failing(sens, ESCALATING_FACTOR)
         warning = self.pred.failing(sens)
@@ -431,6 +443,7 @@ class Detector:
             "score": round(score, 3), "level": level, "score_level": score_level,
             "print_started": self.print_started,
             "ignored": self.ignored,
+            "extruding": self.extruding(),
             "frames": self.pred.current_frame_num,
             "safe_frames": detect.INIT_SAFE_FRAME_NUM,
             "snapshot": None if self.snap is None else {
