@@ -472,6 +472,7 @@
     font: inherit; color: var(--text); background: var(--bg);
     border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px;
   }
+  .spoolman-auto { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--muted); }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   /* Server settings (kept on the PrintWarden server) */
   #pwSet { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
@@ -576,6 +577,8 @@
   <p>Leave Name empty to use the name set in the printer's Mainsail. Host is the printer's address. Camera and Screen list the cameras and screen pages set up in the printer's Mainsail (its Moonraker webcam list); pick Custom… to type a path on that host or a full URL instead. The camera picked here is also the one the server checks for failures. Changes are saved in this browser.</p>
   <div class="rows" id="rows"></div>
   <label class="spoolman-url">Spoolman <input type="text" id="spoolmanUrl" placeholder="http://192.168.1.20:7912 (empty = off)"></label>
+  <label class="spoolman-auto" title="When filament goes in or comes out, set the spool's Location in Spoolman to the printer and lane without pressing Sync. Runs while this page is open in a browser."><input type="checkbox" id="autoSync"> Auto sync spool locations while this page is open</label>
+  <label class="spoolman-auto" title="Leave moonraker-timelapse's per-layer commands (TIMELAPSE_TAKE_FRAME and the SET_GCODE_VARIABLE that resets it) out of the Console row, as Mainsail does by default."><input type="checkbox" id="hideTimelapse"> Hide timelapse lines in the console</label>
   <section id="pwSet" hidden>
     <h2>Detection, alerts and timelapses</h2>
     <p>Each printer's row above has its server settings under it: tick <b>Watch</b> to have the PrintWarden server handle it. Timelapse: <b>Render frames</b> renders moonraker-timelapse frames on the server; <b>Copy videos</b> copies finished videos from printers that render on-device (Snapmaker U1). <b>Spaghetti</b> (Obico's model) and <b>Moved parts</b> each have their own setting: <b>Alert</b> notifies; <b>Alert + pause</b> also pauses the print. These live on the server, so they apply to everyone, and Save applies them at once. <span id="pwModel"></span></p>
@@ -732,6 +735,10 @@ const fitting = () => view.fitMode === "width" || view.fitMode === "height";
 const showRow = (r) => !view.off.includes(r) && (r !== "ai" || watchOn);
 const rowOpen = (r) => showRow(r) && !view.collapsed.includes(r);
 let spoolmanBase = store.get("spoolman", DEFAULT_SPOOLMAN);
+// Write Spoolman locations on each spools refresh, not only on Sync
+let autoSync = store.get("autoSync", true);
+// Leave moonraker-timelapse's per-layer commands out of the console row
+let hideTimelapse = store.get("hideTimelapse", true);
 
 // --- helpers ----------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -771,6 +778,7 @@ async function loadMainsailMeta(t) {
     const general = await getJson(moonrakerUrl(t.p, "/server/database/item?namespace=mainsail&key=general"));
     if (general?.value?.printername) t.mainsailName = general.value.printername;
   } catch {}
+  t.nameReady = true; // auto sync waits for this, so it never writes the host as the name
   setName(t);
 
   let logo = `http://${t.p.host}/img/logo.svg`;
@@ -1146,6 +1154,8 @@ function buildGrid() {
       ssync: el.querySelector(".spools .ssync"),
       lanes: null,       // lane_data entries, null until loaded
       laneState: "",     // "ok" | "none" (no lane_data) | "offline"
+      lanesOk: false,    // every read behind the lanes worked (safe to sync)
+      autoKey: "",       // changes auto sync saw last refresh, written once seen twice
       activeSpool: null, // Moonraker's active Spoolman spool
       activeTool: null,  // 0-based head in use on multi-head printers
       syncMsg: "",
@@ -1449,12 +1459,15 @@ function pollAll() { if (!document.hidden) tiles.forEach((t) => { pollOne(t); po
 // are left out, as Mainsail does by default.
 const CONSOLE_LINES = 100;
 const CONSOLE_SKIP = /^ok\s*$|^(ok\s+)?(B|T\d*):\s*-?[\d.]+\s*\//;
+// moonraker-timelapse: the layer macro, and the reset Moonraker sends after
+// each frame (SET_GCODE_VARIABLE MACRO=TIMELAPSE_TAKE_FRAME ...)
+const CONSOLE_TIMELAPSE = /^\s*(SET_GCODE_VARIABLE\s+MACRO=)?(TIMELAPSE_TAKE_FRAME|_SET_TIMELAPSE_SETUP|HYPERLAPSE|TIMELAPSE_RENDER)\b/i;
 const clock = (sec) => new Date(sec * 1000).toLocaleTimeString([], { hour12: false });
 async function pollConsole(t) {
   if (t.p.show === false || !showRow("console")) return;
   let items;
   try {
-    items = (await getJson(moonrakerUrl(t.p, "/server/gcode_store?count=" + CONSOLE_LINES), 4000)).gcode_store || [];
+    items = (await getJson(moonrakerUrl(t.p, "/server/gcode_store?count=" + (hideTimelapse ? 3 : 1) * CONSOLE_LINES), 4000)).gcode_store || [];
   } catch {
     if (t.consoleKey !== "off") {
       t.consoleKey = "off";
@@ -1463,7 +1476,9 @@ async function pollConsole(t) {
     }
     return;
   }
-  items = items.filter((x) => !CONSOLE_SKIP.test(x.message));
+  items = items.filter((x) => !CONSOLE_SKIP.test(x.message)
+    && !(hideTimelapse && x.type === "command" && CONSOLE_TIMELAPSE.test(x.message)))
+    .slice(-CONSOLE_LINES);  // a timelapse print leaves few other lines, so fetch 3x
   const last = items[items.length - 1];
   const key = last ? last.time + "|" + last.message : "empty";
   if (key === t.consoleKey) return;
@@ -1586,6 +1601,7 @@ function normUid(u) {
 // carry the UID (HelixScreen's helix_fingerprint, card_uid / tag_uid).
 async function loadTagUids(t) {
   const live = [];
+  let ok = true;
   try {
     if (t.hasFilamentDetect === undefined) {
       const objs = (await getJson(moonrakerUrl(t.p, "/printer/objects/list"), 4000))?.objects || [];
@@ -1597,6 +1613,7 @@ async function loadTagUids(t) {
     }
   } catch {
     t.hasFilamentDetect = undefined;
+    ok = false;
   }
   t.lanes.forEach((l) => {
     const idx = /^\d+$/.test(String(l.lane)) ? +l.lane : null;
@@ -1605,6 +1622,7 @@ async function loadTagUids(t) {
       ? live[idx] || ""
       : normUid(l.card_uid ?? l.tag_uid ?? l.uid ?? l.helix_fingerprint);
   });
+  return ok;
 }
 // Lanes without a spool_id get the spool whose tag is in them
 function resolveTags(t) {
@@ -1617,6 +1635,9 @@ function resolveTags(t) {
 }
 async function loadLanes(t) {
   if (t.p.show === false) return;
+  // Only a complete read may drive auto sync: a failed read looks like empty
+  // lanes, and syncing that would clear every spool's location
+  let ok = true;
   try {
     const db = await getJson(moonrakerUrl(t.p, "/server/database/item?namespace=lane_data"), 4000);
     t.lanes = mergeLanes(Object.entries(db?.value || {})
@@ -1628,11 +1649,13 @@ async function loadLanes(t) {
     // 404: Moonraker is up but nothing writes lane_data on this printer
     t.lanes = [];
     t.laneState = e.message === "404" ? "none" : "offline";
+    if (t.laneState === "offline") ok = false;
   }
   // lane_data says which spool is assigned to a lane, not whether filament
   // is in it (HelixScreen keeps the assignment after an unload). AFC's lane
   // sensors and lane_data's own `loaded: false` decide that.
-  const { present: afc, order, tools, spools } = await loadAfcPresence(t);
+  const { present: afc, order, tools, spools, ok: afcOk } = await loadAfcPresence(t);
+  if (!afcOk) ok = false;
   t.lanes.forEach((l) => {
     // lane_data's `lane` is the 0-based physical lane; its T0..T3 keys only
     // match AFC's tools while the map is 1:1, and AFC remaps tools every
@@ -1676,25 +1699,28 @@ async function loadLanes(t) {
   });
   if (order.length) t.lanes.sort((a, b) => (+a.lane - +b.lane) || a.key.localeCompare(b.key, undefined, { numeric: true }));
   if (t.lanes.length && t.laneState === "none") t.laneState = "ok";
-  await loadTagUids(t);
+  if (!(await loadTagUids(t))) ok = false;
   try {
     t.activeSpool = (await getJson(moonrakerUrl(t.p, "/server/spoolman/spool_id"), 4000))?.spool_id ?? null;
-  } catch {
+  } catch (e) {
     t.activeSpool = null;
+    // 404: Moonraker has no [spoolman] section, so no active spool to lose
+    if (e.message !== "404") ok = false;
   }
+  t.lanesOk = ok;
 }
 // AFC lane name and mapped tools -> filament present (prep, load or in the
 // toolhead), AFC's lanes in physical order, and lane -> tools mapped to it
 // now. All empty when the printer has no AFC.
 async function loadAfcPresence(t) {
   const m = new Map(), tools = new Map(), spools = new Map();
-  let order = [];
+  let order = [], ok = true;
   try {
     if (!t.afcLanes) {
       const objs = (await getJson(moonrakerUrl(t.p, "/printer/objects/list"), 4000))?.objects || [];
       t.afcLanes = objs.filter((o) => o.startsWith("AFC_lane "));
     }
-    if (!t.afcLanes.length) return { present: m, order, tools, spools };
+    if (!t.afcLanes.length) return { present: m, order, tools, spools, ok };
     const q = ["AFC=lanes", ...t.afcLanes.map(encodeURIComponent)].join("&");
     const st = (await getJson(moonrakerUrl(t.p, "/printer/objects/query?" + q), 4000))?.status || {};
     order = (st.AFC?.lanes || []).map(String);
@@ -1712,16 +1738,20 @@ async function loadAfcPresence(t) {
     if (!order.length) order = t.afcLanes.map((o) => o.slice(9));
   } catch {
     t.afcLanes = null; // retry the object list next time (printer restarted)
+    ok = false;
   }
-  return { present: m, order, tools, spools };
+  return { present: m, order, tools, spools, ok };
 }
 let spoolsBusy = false;
 async function refreshSpools() {
-  if (!view.spools || document.hidden || spoolsBusy) return;
+  // Auto sync keeps refreshing in a background tab (browsers slow its timer
+  // to about once a minute there) and with the Spools row hidden
+  if (spoolsBusy || (!autoSync && (!view.spools || document.hidden))) return;
   spoolsBusy = true;
   try {
     await Promise.all([loadSpoolman(), ...tiles.map(loadLanes)]);
     tiles.forEach(resolveTags);
+    if (autoSync) await Promise.all(tiles.map(autoSyncTile));
     tiles.forEach(renderSpools);
     if (fitting()) scheduleFit();
   } finally {
@@ -1782,6 +1812,20 @@ function syncPlan(t) {
   });
   return { changes, conflicts };
 }
+// Spoolman and every lane read worked, and the printer's name is final
+function canSync(t) {
+  return spoolmanOk && t.lanesOk && t.laneState !== "offline" && !!(t.p.name || t.nameReady);
+}
+// Auto sync writes a change only once two refreshes in a row agree on it,
+// so a lane still settling (filament half in, tag not read yet) is left be
+async function autoSyncTile(t) {
+  const changes = canSync(t) ? syncPlan(t).changes : [];
+  const key = changes.length ? JSON.stringify(changes) : "";
+  if (key !== t.autoKey) { t.autoKey = key; return; }
+  if (!key) return;
+  t.autoKey = "";
+  await syncSpools(t, true);
+}
 
 function renderSpools(t) {
   if (t.lanes === null) return;
@@ -1839,14 +1883,15 @@ function renderSpools(t) {
 
   // Footer: whether Spoolman's locations match, and the Sync button
   let text = "", warn = false;
-  const plan = spoolmanOk ? syncPlan(t) : { changes: [], conflicts: [] };
+  const plan = canSync(t) ? syncPlan(t) : { changes: [], conflicts: [] };
   if (!spoolmanBase) text = "Spoolman off (Printers…)";
   else if (!spoolmanOk) { text = "Spoolman unreachable"; warn = true; }
   else if (t.laneState === "offline") text = "";
   else {
     const parts = [];
     if (t.syncMsg) parts.push(t.syncMsg);
-    parts.push(plan.changes.length ? `${plan.changes.length} location${plan.changes.length > 1 ? "s" : ""} to sync` : "Spoolman in sync");
+    if (!canSync(t)) parts.push("Lanes not fully read, sync waits");
+    else parts.push(plan.changes.length ? `${plan.changes.length} location${plan.changes.length > 1 ? "s" : ""} to sync` : "Spoolman in sync" + (autoSync ? " (auto)" : ""));
     if (plan.conflicts.length) {
       parts.push(plan.conflicts.map((c) => `#${c.id} also in ${c.others.join(", ")}`).join("; "));
       warn = true;
@@ -1859,7 +1904,8 @@ function renderSpools(t) {
   t.ssync.disabled = !plan.changes.length;
 }
 
-async function syncSpools(t) {
+async function syncSpools(t, auto = false) {
+  if (!canSync(t)) return;
   const { changes } = syncPlan(t);
   if (!changes.length) return;
   t.ssync.disabled = true;
@@ -1878,7 +1924,7 @@ async function syncSpools(t) {
       failed++;
     }
   }
-  t.syncMsg = failed ? `${failed} update${failed > 1 ? "s" : ""} failed` : `Updated ${ok}`;
+  t.syncMsg = failed ? `${failed} update${failed > 1 ? "s" : ""} failed` : `${auto ? "Auto-synced" : "Updated"} ${ok}`;
   tiles.forEach(renderSpools);
   setTimeout(() => { t.syncMsg = ""; renderSpools(t); }, 8000);
 }
@@ -2605,6 +2651,8 @@ $("settingsBtn").addEventListener("click", () => {
   pwSettings = null;            // reloaded fresh below, then its rows are attached
   fillRows(printers);
   $("spoolmanUrl").value = spoolmanBase;
+  $("autoSync").checked = autoSync;
+  $("hideTimelapse").checked = hideTimelapse;
   $("pwSet").hidden = true;
   $("settings").showModal();
   pwLoad();
@@ -2649,6 +2697,10 @@ $("saveSettings").addEventListener("click", async () => {
   store.set("printers", printers);
   spoolmanBase = $("spoolmanUrl").value.trim();
   store.set("spoolman", spoolmanBase);
+  autoSync = $("autoSync").checked;
+  store.set("autoSync", autoSync);
+  hideTimelapse = $("hideTimelapse").checked;
+  store.set("hideTimelapse", hideTimelapse);
   $("settings").close();
   buildGrid();
   pollAll();
