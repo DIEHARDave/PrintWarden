@@ -579,6 +579,7 @@
   <label class="spoolman-url">Spoolman <input type="text" id="spoolmanUrl" placeholder="http://192.168.1.20:7912 (empty = off)"></label>
   <label class="spoolman-auto" title="When filament goes in or comes out, set the spool's Location in Spoolman to the printer and lane without pressing Sync. Runs while this page is open in a browser."><input type="checkbox" id="autoSync"> Auto sync spool locations while this page is open</label>
   <label class="spoolman-auto" title="Leave moonraker-timelapse's per-layer commands (TIMELAPSE_TAKE_FRAME and the SET_GCODE_VARIABLE that resets it) out of the Console row, as Mainsail does by default."><input type="checkbox" id="hideTimelapse"> Hide timelapse lines in the console</label>
+  <label class="spoolman-auto" title="Leave AFC's SET_WEIGHT LANE=... commands (the spool weight updates sent while printing) out of the Console row."><input type="checkbox" id="hideWeight"> Hide AFC SET_WEIGHT lines in the console</label>
   <section id="pwSet" hidden>
     <h2>Detection, alerts and timelapses</h2>
     <p>Each printer's row above has its server settings under it: tick <b>Watch</b> to have the PrintWarden server handle it. Timelapse: <b>Render frames</b> renders moonraker-timelapse frames on the server; <b>Copy videos</b> copies finished videos from printers that render on-device (Snapmaker U1). <b>Spaghetti</b> (Obico's model) and <b>Moved parts</b> each have their own setting: <b>Alert</b> notifies; <b>Alert + pause</b> also pauses the print. These live on the server, so they apply to everyone, and Save applies them at once. <span id="pwModel"></span></p>
@@ -739,6 +740,8 @@ let spoolmanBase = store.get("spoolman", DEFAULT_SPOOLMAN);
 let autoSync = store.get("autoSync", true);
 // Leave moonraker-timelapse's per-layer commands out of the console row
 let hideTimelapse = store.get("hideTimelapse", true);
+// ... and AFC's spool weight updates (SET_WEIGHT LANE=lane1 WEIGHT=976)
+let hideWeight = store.get("hideWeight", true);
 
 // --- helpers ----------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -1462,12 +1465,13 @@ const CONSOLE_SKIP = /^ok\s*$|^(ok\s+)?(B|T\d*):\s*-?[\d.]+\s*\//;
 // moonraker-timelapse: the layer macro, and the reset Moonraker sends after
 // each frame (SET_GCODE_VARIABLE MACRO=TIMELAPSE_TAKE_FRAME ...)
 const CONSOLE_TIMELAPSE = /^\s*(SET_GCODE_VARIABLE\s+MACRO=)?(TIMELAPSE_TAKE_FRAME|_SET_TIMELAPSE_SETUP|HYPERLAPSE|TIMELAPSE_RENDER)\b/i;
+const CONSOLE_WEIGHT = /^\s*SET_WEIGHT\b/i;
 const clock = (sec) => new Date(sec * 1000).toLocaleTimeString([], { hour12: false });
 async function pollConsole(t) {
   if (t.p.show === false || !showRow("console")) return;
   let items;
   try {
-    items = (await getJson(moonrakerUrl(t.p, "/server/gcode_store?count=" + (hideTimelapse ? 3 : 1) * CONSOLE_LINES), 4000)).gcode_store || [];
+    items = (await getJson(moonrakerUrl(t.p, "/server/gcode_store?count=" + (hideTimelapse || hideWeight ? 3 : 1) * CONSOLE_LINES), 4000)).gcode_store || [];
   } catch {
     if (t.consoleKey !== "off") {
       t.consoleKey = "off";
@@ -1477,7 +1481,8 @@ async function pollConsole(t) {
     return;
   }
   items = items.filter((x) => !CONSOLE_SKIP.test(x.message)
-    && !(hideTimelapse && x.type === "command" && CONSOLE_TIMELAPSE.test(x.message)))
+    && !(hideTimelapse && x.type === "command" && CONSOLE_TIMELAPSE.test(x.message))
+    && !(hideWeight && x.type === "command" && CONSOLE_WEIGHT.test(x.message)))
     .slice(-CONSOLE_LINES);  // a timelapse print leaves few other lines, so fetch 3x
   const last = items[items.length - 1];
   const key = last ? last.time + "|" + last.message : "empty";
@@ -2653,6 +2658,7 @@ $("settingsBtn").addEventListener("click", () => {
   $("spoolmanUrl").value = spoolmanBase;
   $("autoSync").checked = autoSync;
   $("hideTimelapse").checked = hideTimelapse;
+  $("hideWeight").checked = hideWeight;
   $("pwSet").hidden = true;
   $("settings").showModal();
   pwLoad();
@@ -2701,6 +2707,8 @@ $("saveSettings").addEventListener("click", async () => {
   store.set("autoSync", autoSync);
   hideTimelapse = $("hideTimelapse").checked;
   store.set("hideTimelapse", hideTimelapse);
+  hideWeight = $("hideWeight").checked;
+  store.set("hideWeight", hideWeight);
   $("settings").close();
   buildGrid();
   pollAll();
