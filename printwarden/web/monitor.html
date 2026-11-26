@@ -1694,6 +1694,7 @@ async function loadLanes(t) {
       l.spool_id = a.spool_id;
       if (normHex(a.color)) l.color = a.color;
       if (a.material) l.material = a.material;
+      l.colors = l.color_mode = undefined;
       l.name = l.spool_name = l.ff_nfc_name = l.zmod_nfc_name = l.spoolsync_product_name = undefined;
     }
     // lane_data without a color (HelixScreen on the U1 writes null for some
@@ -1787,13 +1788,53 @@ function normHex(c) {
   const m = String(c || "").match(/^#?([0-9a-f]{6})/i);
   return m ? "#" + m[1] : "";
 }
-function spoolSvg(color, active) {
+// A lane's colors: Spoolman's multi-color filament when the lane's own color
+// is one of them (or the lane has none), else the lane's colors from
+// lane_data (colors + color_mode, as AFC writes them), else its one color.
+// Mode: "coaxial" (side by side, as in dual-color silk) or "gradient"
+// (along the filament's length).
+function laneColors(l, f, color) {
+  const list = (v) => (Array.isArray(v) ? v : String(v || "").split(",")).map(normHex).filter(Boolean);
+  const sm = list(f.multi_color_hexes);
+  if (sm.length > 1 && (!color || sm.some((c) => c.toLowerCase() === color.toLowerCase()))) {
+    return { colors: sm, mode: f.multi_color_direction === "coaxial" ? "coaxial" : "gradient" };
+  }
+  const own = list(l.colors);
+  if (own.length > 1) return { colors: own, mode: l.color_mode === "coaxial" ? "coaxial" : "gradient" };
+  return { colors: color ? [color] : [], mode: "" };
+}
+// Gradient ids must be unique across the page: every tile's lanes share it
+let spoolSvgId = 0;
+// The spool's filament disc: one color, wedges (coaxial) or a top-to-bottom gradient
+function spoolFill(colors, mode, ring) {
+  if (colors.length < 2) {
+    return `<circle cx="20" cy="20" r="18" fill="${colors[0]}" stroke="${ring}" stroke-width="2"/>`;
+  }
+  const n = colors.length;
+  if (mode === "coaxial") {
+    // wedges from 12 o'clock, clockwise; the ring goes on top
+    const pt = (i) => {
+      const a = (i / n) * 2 * Math.PI - Math.PI / 2;
+      return `${(20 + 18 * Math.cos(a)).toFixed(2)} ${(20 + 18 * Math.sin(a)).toFixed(2)}`;
+    };
+    const wedges = colors.map((c, i) =>
+      `<path d="M20 20L${pt(i)}A18 18 0 0 1 ${pt(i + 1)}Z" fill="${c}"/>`).join("");
+    return `${wedges}<circle cx="20" cy="20" r="18" fill="none" stroke="${ring}" stroke-width="2"/>`;
+  }
+  const id = `spoolgrad${++spoolSvgId}`;
+  const stops = colors.map((c, i) => `<stop offset="${((i / (n - 1)) * 100).toFixed(1)}%" stop-color="${c}"/>`).join("");
+  return `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">${stops}</linearGradient></defs>
+    <circle cx="20" cy="20" r="18" fill="url(#${id})" stroke="${ring}" stroke-width="2"/>`;
+}
+// colors: a list (or one color string), mode: "coaxial" or "gradient" for several
+function spoolSvg(colors, mode, active) {
   const ring = active ? "var(--accent)" : "rgba(127,127,127,.55)";
-  if (!color) {
+  colors = (Array.isArray(colors) ? colors : [colors]).filter(Boolean);
+  if (!colors.length) {
     return `<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17" fill="none" stroke="${ring}" stroke-width="2" stroke-dasharray="4 3"/><circle cx="20" cy="20" r="5" fill="none" stroke="${ring}" stroke-width="2"/></svg>`;
   }
   return `<svg viewBox="0 0 40 40">
-    <circle cx="20" cy="20" r="18" fill="${color}" stroke="${ring}" stroke-width="2"/>
+    ${spoolFill(colors, mode, ring)}
     <circle cx="20" cy="20" r="12.5" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="1"/>
     <circle cx="20" cy="20" r="7.5" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1"/>
     <circle cx="20" cy="20" r="5" fill="var(--panel)" stroke="rgba(0,0,0,.35)" stroke-width="1.5"/>
@@ -1864,7 +1905,7 @@ function renderSpools(t) {
       const toolTip = l.tools ? (toolTxt ? ` · mapped to ${toolTxt}` : " · not mapped") : "";
       // No filament in the lane: show it empty
       if (l.absent) {
-        return `<div class="lane empty" title="${esc(l.key + toolTip + " · no filament")}">${spoolSvg("", false)}
+        return `<div class="lane empty" title="${esc(l.key + toolTip + " · no filament")}">${spoolSvg([], "", false)}
           <span class="lkey">${esc(l.key)}${toolTag}</span><span class="lname">Empty</span><span class="lmeta"></span></div>`;
       }
       const id = isId(l.spool_id) ? l.spool_id : null;
@@ -1872,6 +1913,7 @@ function renderSpools(t) {
       const f = s?.filament || {};
       // The lane's own color is what the printer believes is loaded
       const color = normHex(l.color) || normHex(f.color_hex);
+      const { colors, mode } = laneColors(l, f, color);
       const name = s
         ? [f.vendor?.name, f.name].filter(Boolean).join(" ")
         : (l.name || l.spool_name || l.ff_nfc_name || l.zmod_nfc_name || l.spoolsync_product_name || "");
@@ -1884,6 +1926,7 @@ function renderSpools(t) {
       const tip = [
         l.key + toolTip + (id ? ` · spool #${id}` : "") + (l.tag_spool ? " (from its tag; the printer has no spool set)" : "") + (l.keys && l.keys.length > 1 ? ` (lane_data: ${l.keys.join(", ")})` : ""),
         name, material, weight,
+        colors.length > 1 ? `Colors (${mode}): ${colors.join(", ")}` : "",
         s?.location ? "Spoolman location: " + s.location : "",
         id && spoolmanOk && !s ? "Not found in Spoolman" : "",
         dup.length ? "Also loaded in " + dup.join(", ") : "",
@@ -1891,7 +1934,7 @@ function renderSpools(t) {
       ].filter(Boolean).join("\n");
       const cls = "lane" + (active ? " active" : "") + (empty ? " empty" : "") + (dup.length ? " dup" : "");
       const inner = `
-        ${spoolSvg(color, active)}
+        ${spoolSvg(colors, mode, active)}
         <span class="lkey">${esc(l.key)}${toolTag}${id ? ` <span class="sid">#${id}${dup.length ? " ⚠" : ""}${spoolmanOk && !s ? "?" : ""}</span>` : ""}</span>
         <span class="lname">${esc(empty ? "Empty" : name || (id ? "" : "No spool"))}</span>
         <span class="lmeta">${esc([material, weight].filter(Boolean).join(" · "))}</span>`;
